@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <meta name="theme-color" content="#1b4332">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Traceur Rando">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta charset="utf-8">
+  <title>Traceur Rando — La Marmotte</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" crossorigin="">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/togeojson/0.16.0/togeojson.min.js"></script>
+  <script src="https://unpkg.com/togpx@0.5.0/togpx.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js" crossorigin=""></script>
+  <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
+<style>
+:root {
+  --green:     #1b4332;
+  --green-mid: #2d6a4f;
+  --green-lt:  #52b788;
+  --blue:      #2a66c7;
+  --neon:      #39ff14;
+  --red:       #e53e3e;
+  --tab-h:     calc(56px + env(safe-area-inset-bottom));
+  --hdr-h:     calc(0px + env(safe-area-inset-top));
+  --sheet-peek:64px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #000; color: #fff; overflow: hidden; }
+#map { position: fixed; inset: 0; top: var(--hdr-h); bottom: var(--tab-h); z-index: 1; }
+#searchInput { flex: 1; background: rgba(255,255,255,.1); border: none; border-radius: 10px; padding: 9px 12px; font-size: 15px; color: #fff; outline: none; -webkit-appearance: none; -webkit-user-select: text; }
+#searchInput::placeholder { color: rgba(255,255,255,.45); }
+#searchInput:focus { background: rgba(255,255,255,.16); }
+#searchResults { position: fixed; top: env(safe-area-inset-top); left: 10px; right: 10px; background: #1a1a2e; color: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); z-index: 200; display: none; max-height: 260px; overflow-y: auto; }
+.search-item { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.07); cursor: pointer; }
+.search-item:active { background: rgba(255,255,255,.08); }
+.search-item .sname { font-size: 13px; color: #fff; }
+.search-item .stype { font-size: 11px; color: rgba(255,255,255,.45); margin-top: 2px; }
+#search-overlay { position: fixed; inset: 0; z-index: 190; display: none; }
+#search-overlay.visible { display: block; }
+#search-row { display: flex; gap: 8px; padding: 8px 12px 4px; align-items: center; border-bottom: 1px solid rgba(255,255,255,.07); }
+#search-close { background: none; border: none; color: rgba(255,255,255,.5); font-size: 18px; cursor: pointer; padding: 4px 8px; }
+.fab { position: fixed; z-index: 50; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; box-shadow: 0 3px 12px rgba(0,0,0,.4); -webkit-tap-highlight-color: transparent; }
+#fab-gps    { bottom: calc(var(--tab-h) + var(--sheet-peek) + 14px); right: 14px; width: 46px; height: 46px; background: var(--blue); font-size: 20px; }
+#fab-layers { bottom: calc(var(--tab-h) + var(--sheet-peek) + 68px); right: 14px; width: 42px; height: 42px; background: rgba(20,20,20,.85); font-size: 18px; }
+.fab:active { transform: scale(.92); }
+#bottom-sheet { position: fixed; left: 0; right: 0; bottom: var(--tab-h); z-index: 60; background: #111827; border-radius: 18px 18px 0 0; transition: transform .28s cubic-bezier(.4,0,.2,1); will-change: transform; }
+#bottom-sheet.collapsed { transform: translateY(calc(100% - var(--sheet-peek))); }
+#bottom-sheet.expanded  { transform: translateY(0); }
+.sheet-handle-wrap { padding: 10px 0 4px; display: flex; justify-content: center; cursor: pointer; }
+.sheet-handle { width: 38px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.22); }
+.sheet-peek { display: flex; gap: 12px; padding: 0 16px 10px; font-size: 12px; color: rgba(255,255,255,.6); flex-wrap: wrap; }
+.sheet-peek b { color: #fff; font-weight: 600; }
+.sheet-actions { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; padding: 4px 12px 10px; }
+.act-btn { background: rgba(255,255,255,.07); border: none; border-radius: 12px; padding: 10px 4px 8px; display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; min-height: 62px; color: #fff; -webkit-tap-highlight-color: transparent; }
+.act-btn:active { background: rgba(255,255,255,.18); transform: scale(.94); }
+.act-icon { font-size: 22px; line-height: 1; }
+.act-label { font-size: 10px; color: rgba(255,255,255,.6); text-align: center; line-height: 1.2; }
+.act-btn.primary { background: rgba(57,255,20,.12); }
+.act-btn.primary .act-label { color: #9aff72; }
+.act-btn.danger  { background: rgba(229,62,62,.12); }
+.act-btn.danger .act-label  { color: #fc8181; }
+.act-btn.is-active { background: rgba(57,255,20,.22); }
+#sheet-chart-area { padding: 0 12px 10px; display: none; }
+#sheet-chart-area.visible { display: block; }
+#elevationChart { width: 100% !important; height: 130px !important; }
+#distance { font-size: 11px; color: rgba(255,255,255,.6); padding: 4px 0 6px; }
+#obtain   { font-size: 12px; color: rgba(255,255,255,.75); padding: 4px 0; }
+#importStatus { font-size: 12px; color: var(--neon); padding: 2px 12px 8px; min-height: 18px; }
+#tab-bar { position: fixed; bottom: 0; left: 0; right: 0; height: var(--tab-h); background: #0d1117; border-top: 1px solid rgba(255,255,255,.07); display: flex; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; background: none; border: none; color: rgba(255,255,255,.38); font-size: 10px; cursor: pointer; padding: 6px 0 0; -webkit-tap-highlight-color: transparent; }
+.tab-icon { font-size: 20px; line-height: 1; }
+.tab.active { color: var(--neon); }
+.tab#tab-rec.recording { color: var(--red); }
+.tab#tab-rec.recording .tab-icon { animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.18)} }
+@keyframes ors-blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+#ors-indicator { animation: ors-blink 1s ease-in-out infinite; }
+.side-panel { position: fixed; inset: var(--hdr-h) 0 var(--tab-h) 0; background: #0d1117; z-index: 80; display: none; overflow-y: auto; padding: 16px; }
+.side-panel.visible { display: block; }
+.stat-card { background: rgba(255,255,255,.06); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+.stat-card h3 { font-size: 11px; color: rgba(255,255,255,.45); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stat-val  { font-size: 24px; font-weight: 600; }
+.stat-unit { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
+#stats-chart-wrap { height: 160px; margin-top: 8px; }
+.opt-section { margin-bottom: 22px; }
+.opt-section h3 { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #60a5fa; margin-bottom: 10px; font-weight: 700; border-left: 3px solid #3b82f6; padding-left: 8px; }
+.opt-row { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.2); border-radius: 10px; padding: 13px 14px; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; cursor: pointer; transition: background .15s; }
+.opt-row:active { background: rgba(59,130,246,.25); }
+.opt-icon  { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+.opt-text  { flex: 1; }
+.opt-label { font-size: 14px; font-weight: 500; color: #e0f2fe; }
+.opt-desc  { font-size: 11px; color: #7dd3fc; margin-top: 3px; }
+.opt-arrow { color: #60a5fa; font-size: 16px; font-weight: 700; }
+.layer-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.layer-btn { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.3); border-radius: 8px; padding: 9px 16px; font-size: 13px; font-weight: 500; color: #93c5fd; cursor: pointer; transition: all .15s; }
+.layer-btn.active { background: rgba(59,130,246,.3); border-color: #60a5fa; color: #e0f2fe; }
+.opt-back-btn { display: flex; align-items: center; gap: 8px; background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.35); border-radius: 10px; padding: 11px 16px; color: #93c5fd; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; margin-bottom: 20px; transition: background .15s; }
+.opt-back-btn:active { background: rgba(59,130,246,.3); }
+#startupPopup { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; align-items: center; justify-content: center; z-index: 5000; }
+.popup-box { background: #1a1a2e; border-radius: 16px; padding: 22px 20px; max-width: 340px; width: 92vw; }
+.popup-box h3 { font-size: 16px; margin-bottom: 8px; }
+.popup-box p  { font-size: 13px; color: rgba(255,255,255,.6); line-height: 1.55; margin-bottom: 16px; }
+.popup-box button { width: 100%; padding: 12px; background: var(--green-mid); border: none; border-radius: 10px; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+#toast { position: fixed; bottom: calc(var(--tab-h) + var(--sheet-peek) + 14px); left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.82); color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 13px; z-index: 2000; display: none; pointer-events: none; white-space: nowrap; }
+.distance-label { background: rgba(255,255,255,.93); border: 1px dashed #c00; border-radius: 6px; padding: 2px 6px; font-size: 12px; font-weight: 700; color: #b30000; white-space: nowrap; }
+.leaflet-container { touch-action: pan-x pan-y; }
+.sl-label { background: rgba(229,62,62,.9) !important; border: none !important; border-radius: 4px !important; color: #fff !important; font-weight: 700; font-size: 12px; padding: 2px 6px !important; box-shadow: none !important; }
+.sl-label::before { display:none !important; }
+#offline-bar { position: fixed; top: 0; left: 0; right: 0; background: var(--red); color: #fff; font-size: 12px; font-weight: 600; text-align: center; padding: calc(6px + env(safe-area-inset-top)) 12px 6px; z-index: 5000; display: none; padding-top: calc(4px + env(safe-area-inset-top)); }
+#offline-bar.visible { display: block; }
+#precache-modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 4000; display: none; align-items: center; justify-content: center; }
+#precache-modal.open { display: flex; }
+.precache-box { background: #111827; border-radius: 16px; padding: 24px 20px; width: 92vw; max-width: 360px; color: #fff; }
+.precache-box h3 { font-size: 16px; margin-bottom: 8px; }
+.precache-box p  { font-size: 13px; color: rgba(255,255,255,.6); margin-bottom: 16px; line-height: 1.55; }
+.precache-progress-wrap { background: rgba(255,255,255,.1); border-radius: 6px; height: 8px; margin: 12px 0; overflow: hidden; }
+.precache-progress-bar  { background: var(--neon); height: 100%; width: 0%; transition: width .3s; border-radius: 6px; }
+.precache-status { font-size: 12px; color: rgba(255,255,255,.55); margin-top: 6px; min-height: 18px; }
+.precache-btns { display: flex; gap: 10px; margin-top: 16px; }
+.precache-btns button { flex: 1; padding: 11px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+#btn-start-precache { background: var(--neon); color: #000; }
+#btn-cancel-precache { background: rgba(255,255,255,.12); color: #fff; }
+#btn-clear-tiles { background: rgba(229,62,62,.25); color: #fc8181; font-size: 12px; margin-top: 6px; width: 100%; padding: 8px; border-radius: 8px; border: none; cursor: pointer; }
+.tiles-count { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 8px; text-align: right; }
+#update-toast { position: fixed; bottom: calc(var(--tab-h) + 80px); left: 50%; transform: translateX(-50%); background: #1e40af; color: #fff; padding: 12px 18px; border-radius: 14px; font-size: 13px; font-weight: 600; z-index: 6000; display: none; box-shadow: 0 4px 20px rgba(0,0,0,.4); white-space: nowrap; text-align: center; max-width: 90vw; }
+#update-toast.visible { display: flex; align-items: center; gap: 10px; }
+#update-toast button { background: #fff; color: #1e40af; border: none; border-radius: 8px; padding: 5px 12px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.restricted-popup .leaflet-popup-content-wrapper { background: #3d0070; color: #fff; border-radius: 8px; font-size: 12px; padding: 0; }
+.restricted-popup .leaflet-popup-tip { background: #3d0070; }
+.leaflet-control-zoom { border-radius: 10px !important; }
+#importFile { display: none; }
+</style>
+</head>
+<body>
+
+<div id="search-overlay"></div>
+<div id="searchResults">
+  <div id="search-row">
+    <input id="searchInput" type="search" placeholder="Rechercher un lieu…" autocomplete="off" inputmode="search">
+    <button id="search-close" onclick="closeSearch()">✕</button>
+  </div>
+  <div id="search-items"></div>
+</div>
+<div id="map"></div>
+
+<button class="fab" id="fab-gps"    onclick="centerGPS()">📍</button>
+<button class="fab" id="fab-layers" onclick="switchTab('options')">🗺️</button>
+
+<!-- BOTTOM SHEET -->
+<div id="bottom-sheet" class="collapsed">
+  <div class="sheet-handle-wrap" id="sheet-handle-wrap">
+    <div class="sheet-handle"></div>
+  </div>
+  <div class="sheet-peek" id="peek-normal">
+    Dist&nbsp;<b id="stat-dist">—</b>&nbsp;km &nbsp;
+    D+&nbsp;<b id="stat-dp">—</b>&nbsp;m &nbsp;
+    D-&nbsp;<b id="stat-dm">—</b>&nbsp;m &nbsp;
+    <span id="ors-indicator" style="display:none; color:#52b788; font-size:11px;">⟳ ORS…</span>
+    <span id="stat-ibp-wrap">IBP&nbsp;<b id="stat-ibp">—</b></span>
+  </div>
+  <div class="sheet-peek" id="peek-live" style="display:none; color:#fc8181;">
+    ⏺&nbsp;<b id="live-dist">0.00</b>&nbsp;km &nbsp;
+    ↑&nbsp;<b id="live-dp">0</b>&nbsp;m &nbsp;
+    ⬇&nbsp;<b id="live-dm">0</b>&nbsp;m &nbsp;
+    ⏱&nbsp;<b id="live-dur">00:00</b>
+  </div>
+  <div class="sheet-actions">
+    <button class="act-btn primary" onclick="exportGPX()">
+      <span class="act-icon">💾</span><span class="act-label">Exporter GPX</span>
+    </button>
+    <button class="act-btn" onclick="openSearch()">
+      <span class="act-icon">🔍</span><span class="act-label">Rechercher</span>
+    </button>
+    <button class="act-btn" onclick="triggerImport()">
+      <span class="act-icon">📂</span><span class="act-label">Importer GPX</span>
+    </button>
+    <button class="act-btn" id="btn-ligne" onclick="startLigneDroite()">
+      <span class="act-icon">📏</span><span class="act-label" id="btn-ligne-label">Ligne droite</span>
+    </button>
+    <button class="act-btn" onclick="removeLastPoint()">
+      <span class="act-icon">↩️</span><span class="act-label">Annuler pt</span>
+    </button>
+    <button class="act-btn danger" onclick="confirmClearAll()">
+      <span class="act-icon">🗑️</span><span class="act-label">Effacer tout</span>
+    </button>
+    <button class="act-btn" id="btn-chart" onclick="toggleChartArea()">
+      <span class="act-icon">📊</span><span class="act-label">Profil</span>
+    </button>
+    <button class="act-btn" id="btn-boucle" onclick="openBouclePanel()">
+      <span class="act-icon">🔄</span><span class="act-label">Boucle</span>
+    </button>
+  </div>
+
+  <!-- PANNEAU BOUCLE -->
+  <div id="boucle-panel" style="display:none; padding:10px 14px 8px; border-top:1px solid rgba(255,255,255,.07);">
+    <div id="boucle-status" style="font-size:13px; color:rgba(255,255,255,.75); min-height:18px; text-align:center; padding:4px 0 2px;"></div>
+    <div style="display:flex; justify-content:center; margin-top:6px;">
+      <button id="boucle-annuler-btn" onclick="annulerBoucle()" style="display:none; background:rgba(229,62,62,.18); border:none; border-radius:10px; padding:8px 20px; color:#fc8181; font-size:13px; font-weight:600; cursor:pointer;">Annuler</button>
+    </div>
+  </div>
+
+  <div id="sheet-chart-area">
+    <div id="distance"></div>
+    <canvas id="elevationChart"></canvas>
+    <div id="obtain"></div>
+  </div>
+  <div id="importStatus"></div>
+</div>
+
+<!-- STATS PANEL -->
+<div class="side-panel" id="stats-panel">
+  <div class="stat-card">
+    <h3>Trace actuelle</h3>
+    <div class="stat-grid">
+      <div><div class="stat-val" id="sp-dist">—</div><div class="stat-unit">km distance</div></div>
+      <div><div class="stat-val" id="sp-dp">—</div><div class="stat-unit">m dénivelé +</div></div>
+      <div><div class="stat-val" id="sp-dm">—</div><div class="stat-unit">m dénivelé −</div></div>
+      <div><div class="stat-val" id="sp-ibp">—</div><div class="stat-unit">indice IBP</div></div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <h3>Profil altimétrique</h3>
+    <div id="stats-chart-wrap"><canvas id="elevationChartStats"></canvas></div>
+  </div>
+</div>
+
+<!-- REC PANEL -->
+<div class="side-panel" id="rec-panel">
+  <div class="stat-card">
+    <h3>Enregistrement en cours</h3>
+    <div class="stat-grid">
+      <div><div class="stat-val" id="rp-dist">0.00</div><div class="stat-unit">km parcourus</div></div>
+      <div><div class="stat-val" id="rp-dur">00:00</div><div class="stat-unit">durée</div></div>
+      <div><div class="stat-val" id="rp-dp">0</div><div class="stat-unit">m dénivelé +</div></div>
+      <div><div class="stat-val" id="rp-dm">0</div><div class="stat-unit">m dénivelé −</div></div>
+      <div><div class="stat-val" id="rp-alt">—</div><div class="stat-unit">m altitude</div></div>
+      <div><div class="stat-val" id="rp-pts">0</div><div class="stat-unit">points GPS</div></div>
+    </div>
+  </div>
+  <div class="stat-card" style="background:rgba(229,62,62,.1);">
+    <h3 style="color:#fc8181;">Vitesse</h3>
+    <div class="stat-grid">
+      <div><div class="stat-val" id="rp-spd">—</div><div class="stat-unit">km/h instant.</div></div>
+      <div><div class="stat-val" id="rp-avg">—</div><div class="stat-unit">km/h moyenne</div></div>
+    </div>
+  </div>
+  <button onclick="stopRecording()" style="width:100%; padding:16px; margin-top:8px; background:rgba(229,62,62,.25); border:2px solid rgba(229,62,62,.5); border-radius:14px; color:#fc8181; font-size:16px; font-weight:700; cursor:pointer; letter-spacing:.02em;">⏹ Arrêter l'enregistrement</button>
+  <p id="rp-save-status" style="font-size:11px; color:rgba(82,183,136,.7); text-align:center; margin-top:10px; min-height:16px;"></p>
+  <p style="font-size:11px; color:rgba(255,255,255,.35); text-align:center; margin-top:4px;">Gardez l'écran allumé sur iOS pour un tracé continu</p>
+</div>
+
+<!-- OPTIONS PANEL -->
+<div class="side-panel" id="options-panel">
+  <button class="opt-back-btn" onclick="switchTab('map')">← Retour à la carte</button>
+  <div class="opt-section">
+    <h3>Fond de carte</h3>
+    <div class="layer-btns">
+      <button class="layer-btn" id="layer-osm" onclick="switchLayer('osm')">OpenStreetMap</button>
+      <button class="layer-btn active" id="layer-tf"  onclick="switchLayer('tf')">Thunderforest Outdoors</button>
+      <button class="layer-btn" id="layer-tfl" onclick="switchLayer('tfl')">Thunderforest Landscape</button>
+      <button class="layer-btn" id="layer-sat" onclick="switchLayer('sat')">Satellite ESRI</button>
+    </div>
+  </div>
+  <div class="opt-section">
+    <h3>Surcouches</h3>
+    <div class="opt-row" onclick="toggleOverlay('hiking')">
+      <span class="opt-icon">🥾</span>
+      <div class="opt-text"><div class="opt-label">Sentiers balisés</div><div class="opt-desc">Waymarked Trails</div></div>
+      <span class="opt-arrow" id="ov-hiking">○</span>
+    </div>
+    <div class="opt-row" onclick="toggleOverlay('route')">
+      <span class="opt-icon">🟢</span>
+      <div class="opt-text"><div class="opt-label">Trace ORS</div><div class="opt-desc">Itinéraire calculé</div></div>
+      <span class="opt-arrow" id="ov-route">●</span>
+    </div>
+    <div class="opt-row" onclick="toggleOverlay('markers')">
+      <span class="opt-icon">📌</span>
+      <div class="opt-text"><div class="opt-label">Points de tracé</div><div class="opt-desc">Afficher les points intermédiaires</div></div>
+      <span class="opt-arrow" id="ov-markers">○</span>
+    </div>
+    <div class="opt-row" onclick="toggleOverlay('tfsat')">
+      <span class="opt-icon">🛰️</span>
+      <div class="opt-text"><div class="opt-label">Sentiers sur satellite</div><div class="opt-desc">Thunderforest Outdoors · opacité 70%</div></div>
+      <span class="opt-arrow" id="ov-tfsat">○</span>
+    </div>
+    <div class="opt-row" id="ov-restricted-row" onclick="toggleOverlay('restricted')">
+      <span class="opt-icon">🚫</span>
+      <div class="opt-text">
+        <div class="opt-label">Sentiers interdits</div>
+        <div class="opt-desc" id="ov-restricted-desc">Privés, accès refusé — données OSM · zoom ≥ 13</div>
+      </div>
+      <span class="opt-arrow" id="ov-restricted">○</span>
+    </div>
+  </div>
+  <div class="opt-section">
+    <h3>Hors-ligne</h3>
+    <div class="opt-row" onclick="openPrecacheModal()">
+      <span class="opt-icon">📥</span>
+      <div class="opt-text">
+        <div class="opt-label">Télécharger la zone visible</div>
+        <div class="opt-desc" id="offline-desc">Enregistre les tuiles pour randonner sans réseau</div>
+      </div>
+      <span class="opt-arrow">›</span>
+    </div>
+  </div>
+  <div class="opt-section">
+    <h3>Statistiques routage</h3>
+    <div class="opt-row" style="cursor:default;pointer-events:none">
+      <span class="opt-icon">🟢</span>
+      <div class="opt-text">
+        <div class="opt-label">ORS <span style="font-size:11px;opacity:.6">(≤48 pts · 2000/jour)</span></div>
+        <div class="opt-desc" id="counter-ors">0 requête ce mois</div>
+      </div>
+      <span class="opt-arrow" id="counter-ors-badge" style="font-size:13px;font-weight:700;color:#4ade80">0</span>
+    </div>
+    <div class="opt-row" style="cursor:default;pointer-events:none">
+      <span class="opt-icon">🟣</span>
+      <div class="opt-text">
+        <div class="opt-label">Valhalla <span style="font-size:11px;opacity:.6">(>48 pts · 125/mois)</span></div>
+        <div class="opt-desc" id="counter-valhalla">0 requête ce mois</div>
+      </div>
+      <span class="opt-arrow" id="counter-valhalla-badge" style="font-size:13px;font-weight:700;color:#c084fc">0</span>
+    </div>
+    <div style="text-align:right;padding:4px 14px 0">
+      <span onclick="resetCounters()" style="font-size:10px;color:#7dd3fc;cursor:pointer;text-decoration:underline">Réinitialiser</span>
+    </div>
+  </div>
+  <div class="opt-section">
+    <h3>IBP</h3>
+    <div class="opt-row" id="ibp-row" onclick="computeIBP()">
+      <span class="opt-icon">🧮</span>
+      <div class="opt-text"><div class="opt-label">Calculer l'IBP</div><div class="opt-desc" id="ibp-desc">Via ibpindex.com — sans téléchargement</div></div>
+      <span class="opt-arrow" id="ibp-arrow">›</span>
+    </div>
+  </div>
+</div>
+
+<!-- TAB BAR -->
+<nav id="tab-bar">
+  <button class="tab active" id="tab-map"    onclick="switchTab('map')">
+    <span class="tab-icon">🗺️</span><span>Carte</span>
+  </button>
+  <button class="tab" id="tab-rec" onclick="onclickRec()">
+    <span class="tab-icon">⏺️</span><span>Enreg.</span>
+  </button>
+  <button class="tab" id="tab-stats"   onclick="switchTab('stats')">
+    <span class="tab-icon">📊</span><span>Stats</span>
+  </button>
+  <button class="tab" id="tab-options" onclick="switchTab('options')">
+    <span class="tab-icon">⚙️</span><span>Options</span>
+  </button>
+</nav>
+
+<!-- BARRES & MODALS -->
+<div id="offline-bar">📵 Hors-ligne — la carte utilise le cache local</div>
+
+<div id="precache-modal">
+  <div class="precache-box">
+    <h3>📥 Télécharger la zone</h3>
+    <p>Télécharge les tuiles de la zone visible (zoom 10→<span id="precache-zoom-label">15</span>) pour une utilisation hors-ligne.</p>
+    <div class="precache-progress-wrap"><div class="precache-progress-bar" id="precache-bar"></div></div>
+    <div class="precache-status" id="precache-status">Prêt à télécharger.</div>
+    <div class="tiles-count" id="tiles-count"></div>
+    <div class="precache-btns">
+      <button id="btn-start-precache" onclick="startPrecache()">⬇️ Télécharger</button>
+      <button id="btn-cancel-precache" onclick="closePrecacheModal()">Fermer</button>
+    </div>
+    <button id="btn-clear-tiles" onclick="clearTilesCache()">🗑️ Vider le cache tuiles</button>
+  </div>
+</div>
+
+<div id="startupPopup">
+  <div class="popup-box">
+    <h3>🥾 MapiBiBi — Bienvenue</h3>
+    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v8.0 — Architecture distribuée</p>
+    <p>Nouvelle architecture modulaire ES : <b>12 fichiers JS</b> indépendants · même interface · même fonctionnalités.</p>
+    <p style="font-size:11px;margin-top:8px;opacity:.55">Tapez la carte pour tracer · swipez le panneau bas · ⚙️ Options pour les couches</p>
+    <button onclick="closeStartupPopup()">C'est parti 🥾</button>
+  </div>
+</div>
+
+<div id="recChoixPopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); align-items:center; justify-content:center; z-index:5000;">
+  <div class="popup-box">
+    <h3>⏹️ Enregistrement terminé</h3>
+    <p id="rec-choix-info" style="font-size:13px; color:rgba(255,255,255,.65); margin-bottom:16px;"></p>
+    <button onclick="afficherTraceBrut()" style="width:100%; padding:12px; background:rgba(255,255,255,.1); border:none; border-radius:10px; color:#fff; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:10px;">
+      📍 Tracé GPS brut
+      <span style="display:block; font-size:11px; font-weight:400; opacity:.55; margin-top:3px;">Fidèle à votre parcours réel</span>
+    </button>
+    <button onclick="afficherTraceSentiers()" style="width:100%; padding:12px; background:rgba(57,255,20,.15); border:none; border-radius:10px; color:#9aff72; font-size:14px; font-weight:600; cursor:pointer;">
+      🥾 Recalculer sur les sentiers
+      <span style="display:block; font-size:11px; font-weight:400; opacity:.7; margin-top:3px;">ORS snape sur les chemins OSM</span>
+    </button>
+  </div>
+</div>
+
+<div id="recRestorePopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); align-items:center; justify-content:center; z-index:5000;">
+  <div class="popup-box">
+    <h3>📍 Enregistrement interrompu</h3>
+    <p id="rec-restore-info" style="font-size:13px; color:rgba(255,255,255,.65); margin-bottom:16px;"></p>
+    <button onclick="restaurerTraceLive(true)" style="width:100%; padding:12px; background:rgba(57,255,20,.15); border:none; border-radius:10px; color:#9aff72; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:10px;">
+      ✅ Restaurer la trace
+    </button>
+    <button onclick="restaurerTraceLive(false)" style="width:100%; padding:12px; background:rgba(255,255,255,.08); border:none; border-radius:10px; color:rgba(255,255,255,.6); font-size:14px; font-weight:600; cursor:pointer;">
+      🗑️ Ignorer
+    </button>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+<div id="toast"></div>
+<div id="update-toast">
+  🔄 Nouvelle version disponible
+  <button onclick="applyUpdate()">Mettre à jour</button>
+</div>
+
+<!-- Point d'entrée ES Module — doit être APRÈS le chargement des libs CDN (Leaflet, Chart.js…) -->
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
