@@ -71,6 +71,7 @@ Object.assign(window, {
 
 /* ── CLIC CARTE ── */
 map.on('click', e => {
+  if (state.gpsTracking) return;   /* ← enregistrement en cours : touches ignorées */
   if (state.modeAB) return;
   if (state.modeBoucle) {
     if (state.importedTrace) {
@@ -204,3 +205,4 @@ window.addEventListener('load', async () => {
 
   setTimeout(() => map.invalidateSize(), 300);
 });
+
