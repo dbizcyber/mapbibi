@@ -10,10 +10,14 @@ const VALHALLA_URL = 'https://valhalla1.openstreetmap.de/route';
 const TIMEOUT_MS   = 15000;
 let _routeAbort    = null;
 
-/* ── Décodage Polyline6 encodée (Google Polyline + 3ème dimension altitude) ── */
-function _decodePolyline6(encoded) {
+/* ── Décodage Polyline encodée ──
+   Valhalla utilise par défaut la précision 1e6 (6 décimales) pour lat/lng
+   et 1e0 × 0.1 pour l'altitude quand elevation_interval est demandé.
+   Si les coordonnées semblent hors-zone, le fallback Polyline5 (1e5) est utilisé. ── */
+function _decodePolyline(encoded, precision) {
+  const factor = Math.pow(10, precision);
   const coords = [];
-  let idx = 0, lat = 0, lng = 0, ele = 0;
+  let idx = 0, lat = 0, lng = 0;
   while (idx < encoded.length) {
     let b, shift = 0, result = 0;
     do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
@@ -21,41 +25,37 @@ function _decodePolyline6(encoded) {
     shift = 0; result = 0;
     do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
     lng += (result & 1) ? ~(result >> 1) : (result >> 1);
-    shift = 0; result = 0;
-    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
-    ele += (result & 1) ? ~(result >> 1) : (result >> 1);
-    coords.push([lat / 1e6, lng / 1e6, ele / 10]);  /* précision 1e6 lat/lng, 10e0 altitude */
+    coords.push([lat / factor, lng / factor]);
   }
   return coords;
 }
 
+/* Fusionne les coordonnées 2D décodées avec les altitudes du tableau separé */
+function _mergeElevations(coords2d, elevations) {
+  return coords2d.map((c, i) => [c[0], c[1], elevations?.[i] ?? 0]);
+}
+
 /* ── Corps de requête Valhalla natif ── */
 function _buildRequest(pts) {
-  /* Premier et dernier point en 'break', intermédiaires en 'via'
-     pour forcer le passage exact par chaque waypoint */
-  const locations = pts.map((p, i) => ({
-    lon:  p[0],
-    lat:  p[1],
-    type: (i === 0 || i === pts.length - 1) ? 'break' : 'via',
-  }));
-
   return {
-    locations,
+    locations: pts.map(p => ({
+      lon:           p[0],
+      lat:           p[1],
+      type:          'break',
+      search_radius: 100,
+    })),
     costing: 'pedestrian',
     costing_options: {
       pedestrian: {
-        walking_speed:       4.5,   /* km/h */
-        use_trails:          1.0,   /* favoriser les sentiers balisés */
-        use_hills:           0.5,
-        use_ferry:           0.0,
-        use_living_streets:  0.5,
-        /* Pénalités fortes pour forcer le réseau OSM */
-        alley_factor:        2.0,
-        country_crossing_penalty: 600,
+        walking_speed: 4.5,
+        use_trails:    0.5,
+        use_hills:     0.5,
+        use_ferry:     0.0,
       }
     },
     directions_options: { units: 'kilometers' },
-    elevation_interval: 30,
+    shape_format: 'polyline6',   /* demander explicitement Polyline6 (précision 1e6) */
+    elevation_interval: 30,      /* altitude tous les 30 m, retournée dans leg.elevation */
     format: 'json',
   };
 }
@@ -98,8 +98,29 @@ export async function rebuildRoute() {
     const legs = d?.trip?.legs;
     if (!legs || !legs.length) throw new Error('Réponse vide');
 
-    legs.forEach(leg => {
-      _decodePolyline6(leg.shape).forEach(c => newCoords.push([c[0], c[1], c[2]]));
+    legs.forEach((leg, legIdx) => {
+      /* Auto-détection de la précision : on compare le 1er point décodé
+         avec le waypoint source correspondant pour choisir entre 1e5 et 1e6 */
+      const ref   = pts[legIdx];   /* [lng, lat] du waypoint départ du leg */
+      let coords2d;
+      const c6 = _decodePolyline(leg.shape, 6);
+      const c5 = _decodePolyline(leg.shape, 5);
+      /* Écart entre 1er point décodé et waypoint connu */
+      const d6 = Math.abs(c6[0][0] - ref[1]) + Math.abs(c6[0][1] - ref[0]);
+      const d5 = Math.abs(c5[0][0] - ref[1]) + Math.abs(c5[0][1] - ref[0]);
+      coords2d = d6 <= d5 ? c6 : c5;
+      console.log(`[Route] précision détectée: ${d6 <= d5 ? '1e6 (polyline6)' : '1e5 (polyline5)'}`);
+
+      const elevations = leg.elevation || [];
+      const merged = coords2d.map((c, i) => {
+        const ratio = elevations.length > 1 ? i / (coords2d.length - 1) * (elevations.length - 1) : 0;
+        const lo = Math.floor(ratio), hi = Math.min(Math.ceil(ratio), elevations.length - 1);
+        const ele = elevations.length
+          ? elevations[lo] + (elevations[hi] - elevations[lo]) * (ratio - lo)
+          : 0;
+        return [c[0], c[1], Math.round(ele)];
+      });
+      merged.forEach(c => newCoords.push(c));
     });
 
     if (!newCoords.length) throw new Error('Aucune coordonnée décodée');
