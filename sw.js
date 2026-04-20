@@ -4,7 +4,7 @@
    Niveau 2 : tuiles carte cachées à la demande (zone visible)
    ══════════════════════════════════════════════════════════════ */
 
-const CACHE_APP   = "mapybibi-app-v8";
+const CACHE_APP   = "mapybibi-app-v8-1";
 const CACHE_TILES = "mapybibi-tiles-v1";
 const MAX_TILES   = 2000;
 
@@ -205,4 +205,3 @@ async function precacheTiles(bounds, maxZoom, client) {
   }
   client && client.postMessage({ type: "PRECACHE_DONE", fetched, total, errors });
 }
-
