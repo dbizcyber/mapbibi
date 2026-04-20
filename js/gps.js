@@ -195,3 +195,4 @@ export function desactiverWakeLock() {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && state.gpsTracking) activerWakeLock();
 });
+
