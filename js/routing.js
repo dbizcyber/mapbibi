@@ -31,11 +31,28 @@ function _decodePolyline6(encoded) {
 
 /* ── Corps de requête Valhalla natif ── */
 function _buildRequest(pts) {
+  /* Premier et dernier point en 'break', intermédiaires en 'via'
+     pour forcer le passage exact par chaque waypoint */
+  const locations = pts.map((p, i) => ({
+    lon:  p[0],
+    lat:  p[1],
+    type: (i === 0 || i === pts.length - 1) ? 'break' : 'via',
+  }));
+
   return {
-    locations: pts.map(p => ({ lon: p[0], lat: p[1], type: 'break' })),
+    locations,
     costing: 'pedestrian',
     costing_options: {
-      pedestrian: { use_trails: 1.0, use_hills: 0.5 }
+      pedestrian: {
+        walking_speed:       4.5,   /* km/h */
+        use_trails:          1.0,   /* favoriser les sentiers balisés */
+        use_hills:           0.5,
+        use_ferry:           0.0,
+        use_living_streets:  0.5,
+        /* Pénalités fortes pour forcer le réseau OSM */
+        alley_factor:        2.0,
+        country_crossing_penalty: 600,
+      }
     },
     directions_options: { units: 'kilometers' },
     elevation_interval: 30,
