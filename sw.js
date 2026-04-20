@@ -28,6 +28,7 @@ const API_ORIGINS = [
   "nominatim.openstreetmap.org", "overpass-api.de",
   "api.openrouteservice.org", "www.ibpindex.com",
   "supabase.co", "tile.waymarkedtrails.org",
+  "api.open-elevation.com",
 ];
 
 const TILE_ORIGINS = ["tile.openstreetmap.org", "tile.thunderforest.com", "server.arcgisonline.com"];
@@ -204,3 +205,4 @@ async function precacheTiles(bounds, maxZoom, client) {
   }
   client && client.postMessage({ type: "PRECACHE_DONE", fetched, total, errors });
 }
+
