@@ -1,13 +1,47 @@
-/* ── routing.js — routage pédestre ORS/Valhalla via proxy Supabase ── */
-import { state }                      from './state.js';
-import { setLoading }                 from './ui.js';
-import { saveLocal, incrementCounter } from './storage.js';
-import { drawElevation }              from './elevation.js';
-import { mkEditable, updateStartEndMarkers, refreshPts, routeLayer, editMarkersGrp, editPts, map } from './map.js';
+/* ── routing.js — routage pédestre via Valhalla public OSM (sans clé, sans quota) ── */
+import { state }         from './state.js';
+import { setLoading }    from './ui.js';
+import { saveLocal }     from './storage.js';
+import { drawElevation } from './elevation.js';
+import { mkEditable, updateStartEndMarkers, refreshPts,
+         routeLayer, editMarkersGrp, editPts, map } from './map.js';
 
-const VALHALLA_URL = 'https://whlxbfnmyqdflmxosfse.supabase.co/functions/v1/valhalla-proxy';
+const VALHALLA_URL = 'https://valhalla1.openstreetmap.de/route';
 const TIMEOUT_MS   = 15000;
 let _routeAbort    = null;
+
+/* ── Décodage Polyline6 encodée (Google Polyline + 3ème dimension altitude) ── */
+function _decodePolyline6(encoded) {
+  const coords = [];
+  let idx = 0, lat = 0, lng = 0, ele = 0;
+  while (idx < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : (result >> 1);
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    ele += (result & 1) ? ~(result >> 1) : (result >> 1);
+    coords.push([lat / 1e6, lng / 1e6, ele / 10]);  /* précision 1e6 lat/lng, 10e0 altitude */
+  }
+  return coords;
+}
+
+/* ── Corps de requête Valhalla natif ── */
+function _buildRequest(pts) {
+  return {
+    locations: pts.map(p => ({ lon: p[0], lat: p[1], type: 'break' })),
+    costing: 'pedestrian',
+    costing_options: {
+      pedestrian: { use_trails: 1.0, use_hills: 0.5 }
+    },
+    directions_options: { units: 'kilometers' },
+    elevation_interval: 30,
+    format: 'json',
+  };
+}
 
 export async function rebuildRoute() {
   if (_routeAbort) _routeAbort.abort();
@@ -26,35 +60,44 @@ export async function rebuildRoute() {
   }
 
   setLoading(true);
-  const pts      = state.manualPts.slice();
-  let ok         = false;
-  let newCoords  = [];
+  const pts     = state.manualPts.slice();
+  let newCoords = [];
+  let ok        = false;
 
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS);
-  });
+  const timeoutId = setTimeout(() => ctrl.abort('timeout'), TIMEOUT_MS);
 
   try {
-    const fetchPromise = fetch(VALHALLA_URL, {
-      method: 'POST',
-      signal: ctrl.signal,
+    const r = await fetch(VALHALLA_URL, {
+      method:  'POST',
+      signal:  ctrl.signal,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ locations: pts })
+      body:    JSON.stringify(_buildRequest(pts)),
     });
-    const r = await Promise.race([fetchPromise, timeoutPromise]);
-    if (!r.ok) throw new Error('Proxy ' + r.status);
+    clearTimeout(timeoutId);
+
+    if (!r.ok) throw new Error('Valhalla HTTP ' + r.status);
     const d = await r.json();
-    if (!d.coords || !d.coords.length) throw new Error('Réponse vide');
-    d.coords.forEach((c, i) => newCoords.push([c[0], c[1], d.elevations?.[i] || 0]));
+
+    const legs = d?.trip?.legs;
+    if (!legs || !legs.length) throw new Error('Réponse vide');
+
+    legs.forEach(leg => {
+      _decodePolyline6(leg.shape).forEach(c => newCoords.push([c[0], c[1], c[2]]));
+    });
+
+    if (!newCoords.length) throw new Error('Aucune coordonnée décodée');
     ok = true;
-    const c = incrementCounter(d.engine || 'valhalla');
-    const { updateCounterUI } = await import('./ui.js');
-    updateCounterUI(c);
-    console.log(`[Route] ${d.engine === 'ors' ? 'ORS' : 'Valhalla'} OK — ${d.coords.length} pts`);
+    console.log(`[Route] Valhalla OSM OK — ${newCoords.length} pts, ${pts.length} waypoints`);
+
   } catch (e) {
-    if (e.name === 'AbortError') { return; }
-    if (e.message === 'timeout') { setLoading(false, '⚠ Délai dépassé — réseau trop lent, réessayez'); return; }
-    console.error('[Route] Proxy échoué:', e.message);
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      if (ctrl.signal.reason === 'timeout') {
+        setLoading(false, '⚠ Délai dépassé — réseau trop lent, réessayez');
+      }
+      return;
+    }
+    console.error('[Route] Valhalla échoué:', e.message);
     setLoading(false, '⚠ Erreur réseau — vérifiez la connexion');
     return;
   }
