@@ -205,4 +205,3 @@ window.addEventListener('load', async () => {
 
   setTimeout(() => map.invalidateSize(), 300);
 });
-
