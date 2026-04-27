@@ -4,7 +4,7 @@
    Niveau 2 : tuiles carte cachées à la demande (zone visible)
    ══════════════════════════════════════════════════════════════ */
 
-const CACHE_APP   = "mapybibi-app-v8-4";
+const CACHE_APP   = "mapybibi-app-v8-5";
 const CACHE_TILES = "mapybibi-tiles-v1";
 const MAX_TILES   = 2000;
 
@@ -53,9 +53,8 @@ self.addEventListener("install", event => {
       );
       const ok = results.filter(r => r.status === "fulfilled").length;
       console.log(`[SW v4] Libs: ${ok}/${LIB_FILES.length} cachees`);
-    })
+    }).then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 /* ACTIVATE */
