@@ -73,4 +73,3 @@ export function showToast(txt, dur = 2200) {
   clearTimeout(showToast._timer);
   showToast._timer = setTimeout(() => { el.style.display = 'none'; }, dur);
 }
-

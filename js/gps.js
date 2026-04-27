@@ -198,4 +198,3 @@ document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && state.gpsTracking) activerWakeLock();
 });
 
-

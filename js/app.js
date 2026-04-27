@@ -185,24 +185,19 @@ window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       console.log('[SW] enregistré', reg.scope);
-      /* Ne pas appeler reg.update() immédiatement — laisse le SW s'installer */
+      reg.update();
       reg.addEventListener('updatefound', () => {
         const newSW = reg.installing;
         if (!newSW) return;
         newSW.addEventListener('statechange', () => {
-          /* Proposer la mise à jour seulement si un SW était déjà actif */
-          if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateToast();
-          }
+          if (newSW.state === 'installed' && navigator.serviceWorker.controller) showUpdateToast();
         });
       });
     }).catch(e => console.warn('[SW] erreur:', e));
 
-    /* Recharger uniquement si un controller existait déjà (pas à la première install) */
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
-      if (!navigator.serviceWorker.controller) return; /* première install : ignorer */
       refreshing = true;
       window.location.reload();
     });

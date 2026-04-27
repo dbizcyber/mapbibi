@@ -192,4 +192,3 @@ function _simplifierTrace(trace, maxPts) {
   for (let i = 0; i < maxPts; i++) result.push(trace[Math.round(i * step)]);
   return result;
 }
-
