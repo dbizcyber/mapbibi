@@ -58,9 +58,8 @@ async function _drainEleQueue() {
     /* Ne re-requête pas si trop proche du dernier point enrichi */
     if (_lastElePos && _lastElePos.distanceTo(pos) < ELE_CACHE_DIST) {
       if (_lastElePos._terrainEle != null) {
-        state.recTrace[idx].ele       = _lastElePos._terrainEle;
-        state.recTrace[idx].eleValid  = true;
-        state.recTrace[idx].eleSource = 'terrain-cache';
+        state.recTrace[idx].ele        = _lastElePos._terrainEle;
+        state.recTrace[idx].eleSource  = 'terrain-cache';
       }
       continue;
     }
@@ -68,14 +67,12 @@ async function _drainEleQueue() {
     _lastEleTime = Date.now();
     if (terrainEle !== null) {
       state.recTrace[idx].ele       = terrainEle;
-      state.recTrace[idx].eleValid  = true;
       state.recTrace[idx].eleSource = 'terrain';
       _lastElePos = pos;
       _lastElePos._terrainEle = terrainEle;
     } else {
-      /* Fallback : conserver l'altitude GPS barométrique si disponible */
+      /* Fallback : conserver l'altitude GPS barométrique */
       state.recTrace[idx].eleSource = 'gps-fallback';
-      /* eleValid reste ce qu'il était (true si GPS fiable, false sinon) */
     }
   }
   _eleBusy = false;
@@ -116,10 +113,11 @@ export function initGPS() {
           const speed = dt > 0 ? dist / dt : 0;
           if (speed <= MAX_SPEED) {
             /* Altitude GPS barométrique — sera enrichie par Open-Elevation */
-            const gpsAltFiable = alt != null && altitudeAccuracy != null && altitudeAccuracy < 30;
-            const gpsEle = gpsAltFiable ? Math.round(alt) : null;  /* null = non fiable, PAS 0 */
+            const gpsEle = (alt != null && altitudeAccuracy != null && altitudeAccuracy < 30)
+              ? Math.round(alt)   /* GPS barométrique fiable */
+              : 0;                /* non fiable → 0, sera écrasé par Open-Elevation */
             const idx = state.recTrace.length;
-            state.recTrace.push({ lat, lng, ele: gpsEle, eleValid: gpsAltFiable, eleSource: 'gps', acc: accuracy || 0, t: now });
+            state.recTrace.push({ lat, lng, ele: gpsEle, eleSource: 'gps', acc: accuracy || 0, t: now });
             _lastRecPos  = newLL;
             _lastRecTime = now;
             /* Planifier enrichissement terrain */
@@ -130,10 +128,10 @@ export function initGPS() {
         }
       } else {
         /* Premier point */
-        const gpsAltFiable = alt != null && altitudeAccuracy != null && altitudeAccuracy < 30;
-        const gpsEle = gpsAltFiable ? Math.round(alt) : null;  /* null = non fiable, PAS 0 */
+        const gpsEle = (alt != null && altitudeAccuracy != null && altitudeAccuracy < 30)
+          ? Math.round(alt) : 0;
         const idx = state.recTrace.length;
-        state.recTrace.push({ lat, lng, ele: gpsEle, eleValid: gpsAltFiable, eleSource: 'gps', acc: accuracy || 0, t: Date.now() });
+        state.recTrace.push({ lat, lng, ele: gpsEle, eleSource: 'gps', acc: accuracy || 0, t: Date.now() });
         _lastRecPos  = newLL;
         _lastRecTime = now;
         _eleQueue.push(idx);
@@ -165,6 +163,9 @@ function _updateLiveTrace() {
   if (livePolyline) livePolyline.setLatLngs(lls);
   else livePolyline = L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.0, opacity: 0.9 }).addTo(routeLayer);
   if (!state.userMovedMap && lls.length) map.panTo(lls[lls.length - 1], { animate: true, duration: 0.3 });
+  /* Icône bouton GPS : 🔒 = suivi actif, 📍 = suivi coupé (carte bougée manuellement) */
+  const fabGps = document.getElementById('fab-gps');
+  if (fabGps && state.gpsTracking) fabGps.textContent = state.userMovedMap ? '📍' : '🔒';
 }
 
 export function resetLivePolyline() { livePolyline = null; }
@@ -197,4 +198,3 @@ export function desactiverWakeLock() {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState === 'visible' && state.gpsTracking) activerWakeLock();
 });
-
