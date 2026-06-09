@@ -123,6 +123,13 @@ export function refreshPts(rebuildCb) {
 }
 
 export function centerGPS() {
-  if (markers.gps) map.setView(markers.gps.getLatLng(), 15);
-  else showToast('GPS non disponible');
+  if (markers.gps) {
+    state.userMovedMap = false;   /* réactive le suivi automatique */
+    map.setView(markers.gps.getLatLng(), 15);
+    /* Mettre à jour l'icône si enregistrement en cours */
+    const fabGps = document.getElementById('fab-gps');
+    if (fabGps && state.gpsTracking) fabGps.textContent = '🔒';
+  } else {
+    showToast('GPS non disponible');
+  }
 }
