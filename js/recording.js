@@ -50,6 +50,9 @@ export function toggleAutoRecording() {
     _nettoyerTraceLive();
     document.getElementById('peek-normal').style.display = 'flex';
     document.getElementById('peek-live').style.display   = 'none';
+    /* Remettre l'icône GPS à l'état normal */
+    const fabGps = document.getElementById('fab-gps');
+    if (fabGps) fabGps.textContent = '📍';
     if (state.recTrace.length > 2) {
       document.getElementById('rec-choix-info').textContent = `${state.recTrace.length} points enregistrés — comment afficher la trace ?`;
       document.getElementById('recChoixPopup').style.display = 'flex';
@@ -78,12 +81,9 @@ function _mettreAJourStatsLive() {
   const mm = Math.floor((durSec % 3600) / 60);
   const ss = durSec % 60;
   const durStr = hh > 0 ? `${hh}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
-  /* N'utiliser que les altitudes validées (terrain ou GPS barométrique fiable) */
-  const eles = state.recTrace.map(p => p.eleValid ? p.ele : null);
+  const eles = state.recTrace.map(p => p.ele || 0);
   const gain = gainElev(eles);
-  /* Altitude actuelle : dernier point avec altitude valide */
-  const dernierValid = [...state.recTrace].reverse().find(p => p.eleValid && p.ele != null);
-  const altActuelle  = dernierValid ? Math.round(dernierValid.ele) : null;
+  const altActuelle = Math.round(state.recTrace[state.recTrace.length - 1].ele || 0);
   let spdInst = '—', spdAvg = '—';
   if (state.recTrace.length >= 2) {
     const p1 = state.recTrace[state.recTrace.length - 2];
@@ -96,7 +96,7 @@ function _mettreAJourStatsLive() {
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('live-dist', distKm); set('live-dp', gain.pos); set('live-dm', gain.neg); set('live-dur', durStr);
   set('rp-dist', distKm);   set('rp-dur', durStr);    set('rp-dp', gain.pos);  set('rp-dm', gain.neg);
-  set('rp-alt', altActuelle != null ? altActuelle : '—'); set('rp-pts', state.recTrace.length); set('rp-spd', spdInst); set('rp-avg', spdAvg);
+  set('rp-alt', altActuelle); set('rp-pts', state.recTrace.length); set('rp-spd', spdInst); set('rp-avg', spdAvg);
   _mettreAJourIndicateurSauvegarde();
 }
 
@@ -157,13 +157,13 @@ export function restaurerTraceLive(oui) {
 /* ── AFFICHAGE APRÈS ENREGISTREMENT ── */
 export function afficherTraceBrut() {
   document.getElementById('recChoixPopup').style.display = 'none';
-  state.manualCoords = state.recTrace.map(p => [p.lat, p.lng, p.eleValid ? (p.ele ?? null) : null]);
+  state.manualCoords = state.recTrace.map(p => [p.lat, p.lng, p.ele || 0]);
   routeLayer.clearLayers();
   const lls = state.recTrace.map(p => [p.lat, p.lng]);
   L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
   mkEditable(lls);
   updateStartEndMarkers(lls);
-  drawElevation(state.recTrace.map(p => p.eleValid ? (p.ele ?? null) : null), lls);
+  drawElevation(state.recTrace.map(p => p.ele || 0), lls);
   saveLocal();
   showChartArea(true);
   showToast(`Tracé GPS brut — ${state.recTrace.length} points`);
