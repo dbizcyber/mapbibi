@@ -105,6 +105,12 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
 .layer-btn.active { background: rgba(59,130,246,.3); border-color: #60a5fa; color: #e0f2fe; }
 .opt-back-btn { display: flex; align-items: center; gap: 8px; background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.35); border-radius: 10px; padding: 11px 16px; color: #93c5fd; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; margin-bottom: 20px; transition: background .15s; }
 .opt-back-btn:active { background: rgba(59,130,246,.3); }
+.lib-item { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,.06); border-radius: 10px; padding: 11px 12px; margin-bottom: 8px; }
+.lib-info { flex: 1; cursor: pointer; min-width: 0; }
+.lib-name { font-size: 14px; font-weight: 600; color: #e0f2fe; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-meta { font-size: 11px; color: rgba(255,255,255,.5); margin-top: 3px; }
+.lib-del  { background: rgba(229,62,62,.15); border: none; border-radius: 8px; padding: 8px 10px; font-size: 14px; cursor: pointer; flex-shrink: 0; }
+.lib-empty { font-size: 13px; color: rgba(255,255,255,.45); text-align: center; padding: 18px 10px; line-height: 1.6; }
 #startupPopup { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; align-items: center; justify-content: center; z-index: 5000; }
 .popup-box { background: #1a1a2e; border-radius: 16px; padding: 22px 20px; max-width: 340px; width: 92vw; }
 .popup-box h3 { font-size: 16px; margin-bottom: 8px; }
@@ -164,7 +170,8 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     Dist&nbsp;<b id="stat-dist">—</b>&nbsp;km &nbsp;
     D+&nbsp;<b id="stat-dp">—</b>&nbsp;m &nbsp;
     D-&nbsp;<b id="stat-dm">—</b>&nbsp;m &nbsp;
-    <span id="ors-indicator" style="display:none; color:#52b788; font-size:11px;">⟳ ORS…</span>
+    ⏱&nbsp;<b id="stat-tps">—</b> &nbsp;
+    <span id="ors-indicator" style="display:none; color:#52b788; font-size:11px;">⟳ Calcul…</span>
     <span id="stat-ibp-wrap">IBP&nbsp;<b id="stat-ibp">—</b></span>
   </div>
   <div class="sheet-peek" id="peek-live" style="display:none; color:#fc8181;">
@@ -198,6 +205,9 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     <button class="act-btn" id="btn-boucle" onclick="openBouclePanel()">
       <span class="act-icon">🔄</span><span class="act-label">Boucle</span>
     </button>
+    <button class="act-btn" onclick="ouvrirBibliotheque()">
+      <span class="act-icon">📚</span><span class="act-label">Mes traces</span>
+    </button>
   </div>
 
   <!-- PANNEAU BOUCLE -->
@@ -224,6 +234,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
       <div><div class="stat-val" id="sp-dist">—</div><div class="stat-unit">km distance</div></div>
       <div><div class="stat-val" id="sp-dp">—</div><div class="stat-unit">m dénivelé +</div></div>
       <div><div class="stat-val" id="sp-dm">—</div><div class="stat-unit">m dénivelé −</div></div>
+      <div><div class="stat-val" id="sp-tps">—</div><div class="stat-unit">temps estimé</div></div>
       <div><div class="stat-val" id="sp-ibp">—</div><div class="stat-unit">indice IBP</div></div>
     </div>
   </div>
@@ -256,6 +267,23 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
   <button onclick="stopRecording()" style="width:100%; padding:16px; margin-top:8px; background:rgba(229,62,62,.25); border:2px solid rgba(229,62,62,.5); border-radius:14px; color:#fc8181; font-size:16px; font-weight:700; cursor:pointer; letter-spacing:.02em;">⏹ Arrêter l'enregistrement</button>
   <p id="rp-save-status" style="font-size:11px; color:rgba(82,183,136,.7); text-align:center; margin-top:10px; min-height:16px;"></p>
   <p style="font-size:11px; color:rgba(255,255,255,.35); text-align:center; margin-top:4px;">Gardez l'écran allumé sur iOS pour un tracé continu</p>
+</div>
+
+<!-- LIBRARY PANEL -->
+<div class="side-panel" id="library-panel">
+  <button class="opt-back-btn" onclick="fermerBibliotheque(); switchTab('map')">← Retour à la carte</button>
+  <div class="opt-section">
+    <h3>Mes traces</h3>
+    <div class="opt-row" onclick="sauvegarderTrace()">
+      <span class="opt-icon">💾</span>
+      <div class="opt-text">
+        <div class="opt-label">Sauvegarder la trace actuelle</div>
+        <div class="opt-desc">Nommée, conservée sur l'appareil (IndexedDB)</div>
+      </div>
+      <span class="opt-arrow">›</span>
+    </div>
+    <div id="library-list"></div>
+  </div>
 </div>
 
 <!-- OPTIONS PANEL -->
@@ -299,6 +327,25 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
         <div class="opt-desc" id="ov-restricted-desc">Privés, accès refusé — données OSM · zoom ≥ 13</div>
       </div>
       <span class="opt-arrow" id="ov-restricted">○</span>
+    </div>
+  </div>
+  <div class="opt-section">
+    <h3>Guidage</h3>
+    <div class="opt-row" onclick="toggleAlerteEcart()">
+      <span class="opt-icon">🧭</span>
+      <div class="opt-text">
+        <div class="opt-label">Alerte d'écart de trace</div>
+        <div class="opt-desc">Vibration si vous vous éloignez de plus de 50 m</div>
+      </div>
+      <span class="opt-arrow" id="ov-ecart">●</span>
+    </div>
+    <div class="opt-row" onclick="ouvrirBibliotheque()">
+      <span class="opt-icon">📚</span>
+      <div class="opt-text">
+        <div class="opt-label">Mes traces</div>
+        <div class="opt-desc">Bibliothèque de traces sauvegardées</div>
+      </div>
+      <span class="opt-arrow">›</span>
     </div>
   </div>
   <div class="opt-section">
@@ -381,8 +428,8 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
 <div id="startupPopup">
   <div class="popup-box">
     <h3>🥾 MapiBiBi — Bienvenue</h3>
-    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.0 — Juin 2026 · 100 % outils gratuits</p>
-    <p>Nouveautés : fonds <b>OpenTopoMap</b> (courbes de niveau) et <b>Plan IGN</b> (Géoplateforme) — <b>sans clé API</b> · pré-cache hors-ligne du <b>fond de carte actif</b> · modules JS cachés dès l'installation (vrai mode avion) · altitudes <code>null</code> propagées sans D+/D- fictifs.</p>
+    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.1 — Juin 2026 · 100 % outils gratuits</p>
+    <p>Nouveautés : <b>⏱ temps de marche estimé</b> (4 km/h + D+/300 + D−/500) · <b>🧭 alerte d'écart de trace</b> (vibration au-delà de 50 m) · <b>📚 bibliothèque de traces</b> — sauvegardez, nommez et rechargez vos randos. Et toujours : OpenTopoMap, Plan IGN, Valhalla — sans clé API.</p>
     <p style="font-size:11px;margin-top:8px;opacity:.55">Tapez la carte pour tracer · ⏺️ Enreg. pour capturer votre parcours terrain · ⚙️ Options pour les couches</p>
     <button onclick="closeStartupPopup()">C'est parti 🥾</button>
   </div>
