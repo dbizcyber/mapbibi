@@ -3,6 +3,7 @@ import { state, markers }     from './state.js';
 import { map }                from './map.js';
 import { routeLayer }         from './map.js';
 import { showToast }          from './utils.js';
+import { verifierEcart }      from './guidage.js';
 
 const MIN_DIST_M   = 5;
 const MAX_ACCURACY = 50;
@@ -95,6 +96,9 @@ export function initGPS() {
     markers.gps._alt             = alt;
     markers.gps._accuracy        = accuracy;
     markers.gps._altAccuracy     = altitudeAccuracy;
+
+    /* Alerte d'écart de trace (throttlée dans le module) */
+    if (!accuracy || accuracy <= MAX_ACCURACY) verifierEcart(lat, lng);
 
     if (state.gpsTracking) {
       const now   = Date.now();

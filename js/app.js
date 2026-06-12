@@ -27,6 +27,9 @@ import { loadRestrictedPaths }                 from './overpass.js';
 import { updateOnlineStatus as _netStatus,
          openPrecacheModal, closePrecacheModal, startPrecache,
          clearTilesCache, initSwMessages }     from './offline.js';
+import { toggleAlerteEcart, initGuidageUI }    from './guidage.js';
+import { ouvrirBibliotheque, fermerBibliotheque, sauvegarderTrace,
+         chargerTrace, supprimerTrace }        from './bibliotheque.js';
 
 /* ── Exposer au HTML inline (onclick="…") ── */
 Object.assign(window, {
@@ -67,6 +70,14 @@ Object.assign(window, {
   clearTilesCache,
   /* compteurs */
   resetCounters: () => { const c = resetCounters(); if (c) { updateCounterUI(c); showToast('Compteurs réinitialisés'); } },
+  /* guidage */
+  toggleAlerteEcart,
+  /* bibliothèque de traces */
+  ouvrirBibliotheque,
+  fermerBibliotheque,
+  sauvegarderTrace,
+  chargerTrace,
+  supprimerTrace,
 });
 
 /* ── CLIC CARTE ── */
@@ -124,7 +135,7 @@ function clearAll() {
   editPts.clearLayers();
   clearLigneDroite();
   updateStartEndMarkers([]);
-  ['stat-dist','stat-dp','stat-dm','sp-dist','sp-dp','sp-dm','sp-ibp','stat-ibp']
+  ['stat-dist','stat-dp','stat-dm','sp-dist','sp-dp','sp-dm','sp-ibp','stat-ibp','stat-tps','sp-tps']
     .forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
   const distEl = document.getElementById('distance');   if (distEl) distEl.innerHTML = '';
   const obEl   = document.getElementById('obtain');     if (obEl)   obEl.innerHTML  = '';
@@ -165,6 +176,9 @@ window.addEventListener('load', async () => {
 
   /* Messages SW → app */
   initSwMessages();
+
+  /* État du toggle d'alerte d'écart */
+  initGuidageUI();
 
   /* Restaurer trace locale */
   if (loadLocal()) {

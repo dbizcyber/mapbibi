@@ -1,5 +1,5 @@
 /* ── elevation.js — profil altimétrique via Chart.js ── */
-import { smooth, gainElev, totalDist, cumDist } from './utils.js';
+import { smooth, gainElev, totalDist, cumDist, estimerTemps } from './utils.js';
 
 let chart1 = null, chart2 = null;
 
@@ -10,13 +10,16 @@ export function drawElevation(elevs, lls = []) {
   const km  = lls.length ? (totalDist(lls) / 1000).toFixed(2) : '0.00';
   const cum = lls.length ? cumDist(lls) : s.map((_, i) => i);
 
+  const tps = lls.length ? estimerTemps(totalDist(lls), g.pos, g.neg) : '—';
+
   /* peek & stats panel */
   ['stat-dist', 'sp-dist'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = km; });
   ['stat-dp',   'sp-dp'  ].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = g.pos; });
   ['stat-dm',   'sp-dm'  ].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = g.neg; });
+  ['stat-tps',  'sp-tps' ].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = tps; });
 
   const distEl = document.getElementById('distance');
-  if (distEl) distEl.innerHTML = `<b>Distance:</b> ${km} km &nbsp;⬆️ D+ ${g.pos} m &nbsp;⬇️ D- ${g.neg} m`;
+  if (distEl) distEl.innerHTML = `<b>Distance:</b> ${km} km &nbsp;⬆️ D+ ${g.pos} m &nbsp;⬇️ D- ${g.neg} m &nbsp;⏱ ${tps}`;
 
   const cfg = {
     type: 'line',

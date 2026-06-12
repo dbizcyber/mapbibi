@@ -65,6 +65,19 @@ export function cumDist(lls) {
   return a;
 }
 
+/* ── Estimation du temps de marche (formule randonneur classique) ──
+   1 h par 4 km à plat + 1 h par 300 m de D+ + 1 h par 500 m de D−.
+   distM en mètres, dpos/dneg en mètres. Retourne « 3h45 » ou « 45 min ». */
+export function estimerTemps(distM, dpos = 0, dneg = 0) {
+  if (!distM || distM <= 0) return '—';
+  const h = (distM / 1000) / 4 + (dpos || 0) / 300 + (dneg || 0) / 500;
+  const totalMin = Math.round(h * 60);
+  if (totalMin < 60) return `${totalMin} min`;
+  const hh = Math.floor(totalMin / 60);
+  const mm = totalMin % 60;
+  return `${hh}h${String(mm).padStart(2, '0')}`;
+}
+
 export function showToast(txt, dur = 2200) {
   const el = document.getElementById('toast');
   if (!el) return;
