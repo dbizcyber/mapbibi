@@ -172,7 +172,7 @@ window.addEventListener('load', async () => {
     L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
     mkEditable(lls);
     updateStartEndMarkers(lls);
-    drawElevation(state.manualCoords.map(c => c[2] || 0), lls);
+    drawElevation(state.manualCoords.map(c => c[2] ?? null), lls);
     map.fitBounds(lls, { padding: [20, 20] });
     showToast('Trace restaurée');
     showChartArea(true);

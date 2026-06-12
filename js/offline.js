@@ -1,5 +1,5 @@
 /* ── offline.js — pré-cache tuiles + détection réseau ── */
-import { map }       from './map.js';
+import { map, currentTileTemplate }       from './map.js';
 import { showToast } from './utils.js';
 
 /* ── DÉTECTION HORS-LIGNE ── */
@@ -38,7 +38,7 @@ export function startPrecache() {
   document.getElementById('btn-start-precache').disabled = true;
   document.getElementById('btn-start-precache').textContent = '⏳ En cours…';
   document.getElementById('precache-status').textContent = 'Connexion au Service Worker…';
-  navigator.serviceWorker.controller.postMessage({ type: 'PRECACHE_TILES', bounds, zoom });
+  navigator.serviceWorker.controller.postMessage({ type: 'PRECACHE_TILES', bounds, zoom, template: currentTileTemplate() });
 }
 
 export function clearTilesCache() {

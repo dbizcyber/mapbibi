@@ -8,14 +8,20 @@ L.control.zoom({ position: 'topright' }).addTo(map);
 map.on('dragstart', () => { state.userMovedMap = true; });
 map.on('zoomstart', () => { state.userMovedMap = true; });
 
-/* ── COUCHES DE BASE ── */
-export const osmLayer  = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
-export const tfLayer   = L.tileLayer('https://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=0ffff5950d8a4019bcede9aaeeecb57f', { maxZoom: 22 });
-export const tflLayer  = L.tileLayer('https://tile.thunderforest.com/landscape/{z}/{x}/{y}.png?apikey=0ffff5950d8a4019bcede9aaeeecb57f', { maxZoom: 22 });
+/* ── COUCHES DE BASE — 100 % gratuites, sans clé API ── */
+export const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 19, attribution: '© OpenStreetMap' });
+export const otmLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+  { maxZoom: 17, attribution: '© OpenStreetMap, SRTM | © OpenTopoMap (CC-BY-SA)' });
+const IGN_WMTS = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
+export const ignLayer = L.tileLayer(IGN_WMTS + '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&FORMAT=image/png',
+  { maxZoom: 19, attribution: '© IGN-F / Géoplateforme' });
 export const satLayer  = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles © Esri' });
-export const tfSatLayer = L.tileLayer('https://tile.thunderforest.com/outdoors/{z}/{x}/{y}.png?apikey=0ffff5950d8a4019bcede9aaeeecb57f', { maxZoom: 22, opacity: 0.7 });
+export const otmSatLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, opacity: 0.7 });
 export const hikingOv  = L.tileLayer('https://tile.waymarkedtrails.org/hiking/{z}/{x}/{y}.png', { maxZoom: 18, opacity: 0.9 });
-tfLayer.addTo(map);
+otmLayer.addTo(map); /* OpenTopoMap par défaut — courbes de niveau, idéal rando */
+
+export const BASE_LAYERS = { osm: osmLayer, otm: otmLayer, ign: ignLayer, sat: satLayer };
 
 /* ── GROUPES DE CALQUES ── */
 export const markersGrp       = L.layerGroup();
@@ -28,16 +34,19 @@ export const restrictedLayer  = L.layerGroup();
 
 /* ── CHANGEMENT DE COUCHE DE BASE ── */
 export function switchLayer(n) {
-  [['osm', osmLayer], ['tf', tfLayer], ['tfl', tflLayer], ['sat', satLayer]]
-    .forEach(([key, layer]) => { if (state.curBase === key) map.removeLayer(layer); });
-  if (n === 'osm') osmLayer.addTo(map);
-  if (n === 'tf')  tfLayer.addTo(map);
-  if (n === 'tfl') tflLayer.addTo(map);
-  if (n === 'sat') satLayer.addTo(map);
+  if (!BASE_LAYERS[n]) return;
+  if (BASE_LAYERS[state.curBase]) map.removeLayer(BASE_LAYERS[state.curBase]);
+  BASE_LAYERS[n].addTo(map);
   state.curBase = n;
-  ['osm', 'tf', 'tfl', 'sat'].forEach(k => {
+  Object.keys(BASE_LAYERS).forEach(k => {
     document.getElementById('layer-' + k)?.classList.toggle('active', k === n);
   });
+}
+
+/* URL de tuiles du fond actif — pour le pré-cache hors-ligne */
+export function currentTileTemplate() {
+  const layer = BASE_LAYERS[state.curBase] || osmLayer;
+  return layer._url.replace('{s}', 'a');
 }
 
 /* ── OVERLAYS ── */
@@ -57,7 +66,7 @@ export function toggleOverlay(n, loadRestrictedCb) {
     document.getElementById('ov-markers').textContent = state.ovState.markers ? '●' : '○';
   }
   if (n === 'tfsat') {
-    state.ovState.tfsat ? tfSatLayer.addTo(map) : map.removeLayer(tfSatLayer);
+    state.ovState.tfsat ? otmSatLayer.addTo(map) : map.removeLayer(otmSatLayer);
     const el = document.getElementById('ov-tfsat');
     el.textContent  = state.ovState.tfsat ? '●' : '○';
     el.style.color  = state.ovState.tfsat ? '#52b788' : '';
@@ -108,7 +117,7 @@ export function mkEditable(lls) {
       routeLayer.clearLayers();
       const lls2 = state.manualCoords.map(c => [c[0], c[1]]);
       L.polyline(lls2, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
-      import('./elevation.js').then(m => m.drawElevation(state.manualCoords.map(c => c[2] || 0), lls2));
+      import('./elevation.js').then(m => m.drawElevation(state.manualCoords.map(c => c[2] ?? null), lls2));
       import('./storage.js').then(m => m.saveLocal());
     });
   });

@@ -81,7 +81,7 @@ function _mettreAJourStatsLive() {
   const mm = Math.floor((durSec % 3600) / 60);
   const ss = durSec % 60;
   const durStr = hh > 0 ? `${hh}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}` : `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
-  const eles = state.recTrace.map(p => p.ele || 0);
+  const eles = state.recTrace.map(p => p.ele ?? null);
   const gain = gainElev(eles);
   const altActuelle = Math.round(state.recTrace[state.recTrace.length - 1].ele || 0);
   let spdInst = '—', spdAvg = '—';
@@ -157,13 +157,13 @@ export function restaurerTraceLive(oui) {
 /* ── AFFICHAGE APRÈS ENREGISTREMENT ── */
 export function afficherTraceBrut() {
   document.getElementById('recChoixPopup').style.display = 'none';
-  state.manualCoords = state.recTrace.map(p => [p.lat, p.lng, p.ele || 0]);
+  state.manualCoords = state.recTrace.map(p => [p.lat, p.lng, p.ele ?? null]);
   routeLayer.clearLayers();
   const lls = state.recTrace.map(p => [p.lat, p.lng]);
   L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
   mkEditable(lls);
   updateStartEndMarkers(lls);
-  drawElevation(state.recTrace.map(p => p.ele || 0), lls);
+  drawElevation(state.recTrace.map(p => p.ele ?? null), lls);
   saveLocal();
   showChartArea(true);
   showToast(`Tracé GPS brut — ${state.recTrace.length} points`);

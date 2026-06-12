@@ -56,7 +56,7 @@ export async function handleImport(file) {
     L.polyline(lls, { color: 'red', weight: 4 }).addTo(routeLayer);
     mkEditable(lls); updateStartEndMarkers(lls);
     map.fitBounds(lls, { padding: [20, 20] });
-    drawElevation(state.manualCoords.map(c => c[2] || 0), lls);
+    drawElevation(state.manualCoords.map(c => c[2] ?? null), lls);
     state.importedTrace = true; state.userMovedMap = false;
     st.textContent = '✅ Import OK'; st.style.color = '#52b788';
     setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 2000);
@@ -73,7 +73,7 @@ export function triggerImport() {
 export function exportGPX() {
   if (state.manualCoords.length < 2) { showToast('Aucune trace à exporter'); return; }
   if (typeof togpx !== 'function') { showToast('Lib togpx non chargée'); return; }
-  const geo = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: state.manualCoords.map(c => [c[1], c[0], c[2] || 0]) }, properties: { name: 'Trace ORS' } }] };
+  const geo = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: state.manualCoords.map(c => [c[1], c[0], c[2] || 0]) }, properties: { name: 'MapiBiBi' } }] };
   const gpx  = togpx(geo);
   const blob = new Blob([gpx], { type: 'application/gpx+xml' });
   const now  = new Date();

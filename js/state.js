@@ -2,7 +2,7 @@
 
 export const state = {
   /* Tracé manuel */
-  manualPts:     [],   /* waypoints envoyés à ORS [ [lng,lat], … ] */
+  manualPts:     [],   /* waypoints envoyés à Valhalla [ [lng,lat], … ] */
   manualCoords:  [],   /* coordonnées routées retournées [ [lat,lng,ele], … ] */
   importedTrace: false,
   userMovedMap:  false,
@@ -12,7 +12,7 @@ export const state = {
   recTrace:      [],   /* points GPS bruts { lat,lng,ele,acc,t } */
 
   /* Carte */
-  curBase:  'tf',
+  curBase:  'otm',
   ovState:  { hiking: false, route: true, markers: false, restricted: false, tfsat: false },
 
   /* Mode boucle */
