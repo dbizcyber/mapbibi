@@ -1,16 +1,21 @@
 /* ══════════════════════════════════════════════════════════════
-   MapiBiBi Service Worker v4
+   MapiBiBi Service Worker v9 — 100 % outils gratuits
    Niveau 1 : libs JS/CSS CDN cachées au premier chargement
    Niveau 2 : tuiles carte cachées à la demande (zone visible)
    ══════════════════════════════════════════════════════════════ */
 
-const CACHE_APP   = "mapybibi-app-v8-3";
+const CACHE_APP   = "mapybibi-app-v9-0";
 const CACHE_TILES = "mapybibi-tiles-v1";
 const MAX_TILES   = 2000;
 
 const APP_FILES = [
   "./", "./index.html", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png",
+  /* Modules ES — indispensables hors-ligne dès l'installation */
+  "./js/app.js", "./js/boucle.js", "./js/elevation.js", "./js/gps.js",
+  "./js/gpx.js", "./js/ibp.js", "./js/ligne-droite.js", "./js/map.js",
+  "./js/offline.js", "./js/overpass.js", "./js/recording.js", "./js/routing.js",
+  "./js/search.js", "./js/state.js", "./js/storage.js", "./js/ui.js", "./js/utils.js",
 ];
 
 const LIB_FILES = [
@@ -20,18 +25,20 @@ const LIB_FILES = [
   "https://cdnjs.cloudflare.com/ajax/libs/togeojson/0.16.0/togeojson.min.js",
   "https://unpkg.com/togpx@0.5.0/togpx.js",
   "https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js",
   "https://upload.wikimedia.org/wikipedia/commons/e/ec/RedDot.svg",
 ];
 
 const API_ORIGINS = [
   "nominatim.openstreetmap.org", "overpass-api.de",
-  "api.openrouteservice.org", "www.ibpindex.com",
-  "supabase.co", "tile.waymarkedtrails.org",
-  "api.open-elevation.com",
+  "valhalla1.openstreetmap.de", "api.open-elevation.com",
+  "www.ibpindex.com",
 ];
 
-const TILE_ORIGINS = ["tile.openstreetmap.org", "tile.thunderforest.com", "server.arcgisonline.com"];
+const TILE_ORIGINS = [
+  "tile.openstreetmap.org", "tile.opentopomap.org",
+  "data.geopf.fr", "server.arcgisonline.com",
+  "tile.waymarkedtrails.org",
+];
 
 function isTile(url) {
   try { return TILE_ORIGINS.some(h => new URL(url).hostname.includes(h)); } catch(e) { return false; }
@@ -45,17 +52,18 @@ function isLib(url) {
 
 /* INSTALL */
 self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_APP).then(async cache => {
-      await cache.addAll(APP_FILES);
-      const results = await Promise.allSettled(
-        LIB_FILES.map(url => fetch(url, { cache: "no-cache" }).then(r => { if(r.ok) cache.put(url, r); }))
-      );
-      const ok = results.filter(r => r.status === "fulfilled").length;
-      console.log(`[SW v4] Libs: ${ok}/${LIB_FILES.length} cachees`);
-    })
-  );
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_APP);
+    /* addAll échoue en bloc si UN fichier manque — tolérer les échecs individuels */
+    const app = await Promise.allSettled(APP_FILES.map(url =>
+      fetch(url, { cache: "no-cache" }).then(r => { if (r.ok) cache.put(url, r); })
+    ));
+    const libs = await Promise.allSettled(
+      LIB_FILES.map(url => fetch(url, { cache: "no-cache" }).then(r => { if (r.ok) cache.put(url, r); }))
+    );
+    console.log(`[SW v9] App: ${app.filter(r => r.status === "fulfilled").length}/${APP_FILES.length} — Libs: ${libs.filter(r => r.status === "fulfilled").length}/${LIB_FILES.length}`);
+    await self.skipWaiting(); /* dans waitUntil — évite la race condition */
+  })());
 });
 
 /* ACTIVATE */
@@ -123,10 +131,10 @@ async function cacheTile(request) {
 
 /* MESSAGES */
 self.addEventListener("message", async event => {
-  const { type, bounds, zoom } = event.data || {};
+  const { type, bounds, zoom, template } = event.data || {};
 
   if (type === "PRECACHE_TILES") {
-    precacheTiles(bounds, zoom, event.source);
+    precacheTiles(bounds, zoom, event.source, template);
     return;
   }
   if (type === "TILES_INFO") {
@@ -147,8 +155,9 @@ self.addEventListener("message", async event => {
   }
 });
 
-/* Pré-cache d'une zone géographique */
-async function precacheTiles(bounds, maxZoom, client) {
+/* Pré-cache d'une zone géographique — fond de carte actif */
+async function precacheTiles(bounds, maxZoom, client, template) {
+  template = template || "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const { north, south, east, west } = bounds;
 
   function lon2x(lon, z) { return Math.floor((lon + 180) / 360 * (1 << z)); }
@@ -183,7 +192,7 @@ async function precacheTiles(bounds, maxZoom, client) {
 
     for (let x = xMin; x <= xMax; x++) {
       for (let y = yMin; y <= yMax; y++) {
-        const url = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+        const url = template.replace("{z}", z).replace("{x}", x).replace("{y}", y);
         try {
           if (!await cache.match(url)) {
             const r = await fetch(url);
@@ -205,3 +214,4 @@ async function precacheTiles(bounds, maxZoom, client) {
   }
   client && client.postMessage({ type: "PRECACHE_DONE", fetched, total, errors });
 }
+
