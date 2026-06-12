@@ -47,10 +47,12 @@ function _buildRequest(pts) {
     costing: 'pedestrian',
     costing_options: {
       pedestrian: {
-        walking_speed: 4.5,
-        use_trails:    0.5,
-        use_hills:     0.5,
-        use_ferry:     0.0,
+        walking_speed:         4.5,
+        max_hiking_difficulty: 6,    /* autorise TOUS les sentiers (sac_scale T1→T6) — défaut 1 = T2+ exclus ! */
+        walkway_factor:        0.5,  /* coût ×0.5 sur sentiers/footways → fortement préférés (défaut 0.9) */
+        use_tracks:            1.0,  /* préférence maximale pour les pistes (tracks) */
+        use_hills:             0.5,
+        use_ferry:             0.0,
       }
     },
     directions_options: { units: 'kilometers' },
