@@ -4,7 +4,7 @@
    Niveau 2 : tuiles carte cachées à la demande (zone visible)
    ══════════════════════════════════════════════════════════════ */
 
-const CACHE_APP   = "mapybibi-app-v9-0";
+const CACHE_APP   = "mapybibi-app-v9-1";
 const CACHE_TILES = "mapybibi-tiles-v1";
 const MAX_TILES   = 2000;
 
@@ -12,7 +12,8 @@ const APP_FILES = [
   "./", "./index.html", "./manifest.json",
   "./icons/icon-192.png", "./icons/icon-512.png",
   /* Modules ES — indispensables hors-ligne dès l'installation */
-  "./js/app.js", "./js/boucle.js", "./js/elevation.js", "./js/gps.js",
+  "./js/app.js", "./js/bibliotheque.js", "./js/boucle.js", "./js/elevation.js",
+  "./js/gps.js", "./js/guidage.js",
   "./js/gpx.js", "./js/ibp.js", "./js/ligne-droite.js", "./js/map.js",
   "./js/offline.js", "./js/overpass.js", "./js/recording.js", "./js/routing.js",
   "./js/search.js", "./js/state.js", "./js/storage.js", "./js/ui.js", "./js/utils.js",
@@ -214,4 +215,3 @@ async function precacheTiles(bounds, maxZoom, client, template) {
   }
   client && client.postMessage({ type: "PRECACHE_DONE", fetched, total, errors });
 }
-
