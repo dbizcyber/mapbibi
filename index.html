@@ -19,7 +19,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" crossorigin=""></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/togeojson/0.16.0/togeojson.min.js"></script>
   <script src="https://unpkg.com/togpx@0.5.0/togpx.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.12.4/jquery.min.js" crossorigin=""></script>
   <script src="https://unpkg.com/nosleep.js@0.12.0/dist/NoSleep.min.js"></script>
 <style>
 :root {
@@ -265,9 +264,9 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
   <div class="opt-section">
     <h3>Fond de carte</h3>
     <div class="layer-btns">
+      <button class="layer-btn active" id="layer-otm" onclick="switchLayer('otm')">OpenTopoMap</button>
+      <button class="layer-btn" id="layer-ign" onclick="switchLayer('ign')">Plan IGN</button>
       <button class="layer-btn" id="layer-osm" onclick="switchLayer('osm')">OpenStreetMap</button>
-      <button class="layer-btn active" id="layer-tf"  onclick="switchLayer('tf')">Thunderforest Outdoors</button>
-      <button class="layer-btn" id="layer-tfl" onclick="switchLayer('tfl')">Thunderforest Landscape</button>
       <button class="layer-btn" id="layer-sat" onclick="switchLayer('sat')">Satellite ESRI</button>
     </div>
   </div>
@@ -290,7 +289,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     </div>
     <div class="opt-row" onclick="toggleOverlay('tfsat')">
       <span class="opt-icon">🛰️</span>
-      <div class="opt-text"><div class="opt-label">Sentiers sur satellite</div><div class="opt-desc">Thunderforest Outdoors · opacité 70%</div></div>
+      <div class="opt-text"><div class="opt-label">Relief sur satellite</div><div class="opt-desc">OpenTopoMap · opacité 70%</div></div>
       <span class="opt-arrow" id="ov-tfsat">○</span>
     </div>
     <div class="opt-row" id="ov-restricted-row" onclick="toggleOverlay('restricted')">
@@ -382,8 +381,8 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
 <div id="startupPopup">
   <div class="popup-box">
     <h3>🥾 MapiBiBi — Bienvenue</h3>
-    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v8.7 — Juin 2026</p>
-    <p>Corrections : <b>taps accidentels ignorés pendant l'enregistrement terrain</b> · <b>élévations enrichies via Open-Elevation</b> (SRTM 30 m) avec fallback GPS barométrique.</p>
+    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.0 — Juin 2026 · 100 % outils gratuits</p>
+    <p>Nouveautés : fonds <b>OpenTopoMap</b> (courbes de niveau) et <b>Plan IGN</b> (Géoplateforme) — <b>sans clé API</b> · pré-cache hors-ligne du <b>fond de carte actif</b> · modules JS cachés dès l'installation (vrai mode avion) · altitudes <code>null</code> propagées sans D+/D- fictifs.</p>
     <p style="font-size:11px;margin-top:8px;opacity:.55">Tapez la carte pour tracer · ⏺️ Enreg. pour capturer votre parcours terrain · ⚙️ Options pour les couches</p>
     <button onclick="closeStartupPopup()">C'est parti 🥾</button>
   </div>
