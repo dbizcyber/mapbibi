@@ -143,7 +143,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
 .restricted-popup .leaflet-popup-content-wrapper { background: #3d0070; color: #fff; border-radius: 8px; font-size: 12px; padding: 0; }
 .restricted-popup .leaflet-popup-tip { background: #3d0070; }
 .leaflet-control-zoom { border-radius: 10px !important; }
-#importFile { display: none; }
+#importFile { position: absolute; left: -9999px; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -187,9 +187,9 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     <button class="act-btn" onclick="openSearch()">
       <span class="act-icon">🔍</span><span class="act-label">Rechercher</span>
     </button>
-    <button class="act-btn" onclick="triggerImport()">
+    <label for="importFile" class="act-btn" style="cursor:pointer">
       <span class="act-icon">📂</span><span class="act-label">Importer GPX</span>
-    </button>
+    </label>
     <button class="act-btn" id="btn-ligne" onclick="startLigneDroite()">
       <span class="act-icon">📏</span><span class="act-label" id="btn-ligne-label">Ligne droite</span>
     </button>
@@ -463,7 +463,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
   </div>
 </div>
 
-<input type="file" id="importFile" accept=".gpx,application/gpx+xml,application/xml,text/xml">
+<input type="file" id="importFile" accept=".gpx,.xml,.json,.geojson,application/gpx+xml,application/xml,text/xml,application/json,application/geo+json,*/*">
 <div id="toast"></div>
 <div id="update-toast">
   🔄 Nouvelle version disponible
