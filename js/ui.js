@@ -59,18 +59,18 @@ export function updateCounterUI(c) {
   const orsBdg = document.getElementById('counter-ors-badge');
   const valBdg = document.getElementById('counter-valhalla-badge');
   if (orsEl)  orsEl.textContent  = `${c.ors} requête${c.ors > 1 ? 's' : ''} ce mois`;
-  if (valEl)  valEl.textContent  = `${c.valhalla} requête${c.valhalla > 1 ? 's' : ''} ce mois — ${Math.round(c.valhalla * 20)} crédits`;
-  if (orsBdg) { orsBdg.textContent = c.ors;      orsBdg.style.color = c.ors      > 1800 ? '#f87171' : '#4ade80'; }
-  if (valBdg) { valBdg.textContent = c.valhalla; valBdg.style.color = c.valhalla > 100  ? '#f87171' : '#c084fc'; }
+  if (valEl)  valEl.textContent  = `${c.valhalla} requête${c.valhalla > 1 ? 's' : ''} ce mois`;
+  if (orsBdg) { orsBdg.textContent = c.ors;      orsBdg.style.color = '#4ade80'; }
+  if (valBdg) { valBdg.textContent = c.valhalla; valBdg.style.color = '#c084fc'; }
 }
 
-/* ── INDICATEUR CHARGEMENT ORS ── */
+/* ── INDICATEUR CHARGEMENT ROUTAGE ── */
 export function setLoading(on, errMsg) {
   const ind  = document.getElementById('ors-indicator');
   const ibp  = document.getElementById('stat-ibp-wrap');
   const stat = document.getElementById('importStatus');
   if (on) {
-    if (ind)  { ind.style.display = 'inline'; ind.textContent = '⟳ ORS…'; }
+    if (ind)  { ind.style.display = 'inline'; ind.textContent = '⟳ Calcul…'; }
     if (ibp)  ibp.style.display = 'none';
     if (stat) { stat.textContent = ''; stat.style.color = ''; }
   } else {
