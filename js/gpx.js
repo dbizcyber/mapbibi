@@ -1,4 +1,9 @@
-/* ── gpx.js — import et export GPX ── */
+/* ── gpx.js — import et export GPX ──
+   v9.1.1 — import fiable sur mobile (iOS + Android) :
+   · <label for="importFile"> au lieu de input.click() programmatique
+   · accept élargi (les MIME GPX ne sont pas reconnus par les OS mobiles)
+   · lecture FileReader uniquement (Blob.text() instable sur certains WebViews)
+   · détection GPX/XML robuste sur le contenu, pas le nom seul */
 import { state }                         from './state.js';
 import { map, routeLayer, editMarkersGrp, mkEditable, updateStartEndMarkers } from './map.js';
 import { drawElevation }                 from './elevation.js';
@@ -6,74 +11,134 @@ import { saveLocal }                     from './storage.js';
 import { showToast }                     from './utils.js';
 import { showChartArea }                 from './ui.js';
 
-/* ── IMPORT ── */
+/* ── PARSING GPX → GeoJSON ── */
 function _gpx2geo(xml) {
+  /* Vérifier que le XML est valide (erreur de parsing ?) */
+  const err = xml.querySelector('parsererror');
+  if (err) throw new Error('XML invalide : ' + (err.textContent || '').slice(0, 80));
   if (window.toGeoJSON && typeof window.toGeoJSON.gpx === 'function') return window.toGeoJSON.gpx(xml);
   if (window.togeojson && typeof window.togeojson.gpx === 'function') return window.togeojson.gpx(xml);
   throw new Error('Lib toGeoJSON absente');
 }
 
+/* ── LECTURE FICHIER — FileReader seul (le plus fiable cross-platform) ── */
 function _readFileText(file) {
   return new Promise((res, rej) => {
-    if (file.text) { file.text().then(res).catch(() => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = e => rej(e); fr.readAsText(file); }); }
-    else { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = e => rej(e); fr.readAsText(file); }
+    const fr = new FileReader();
+    fr.onload  = () => res(fr.result);
+    fr.onerror = () => rej(new Error('Impossible de lire le fichier'));
+    fr.readAsText(file, 'UTF-8');
   });
 }
 
+/* ── IMPORT ── */
 export async function handleImport(file) {
   if (!file) return;
   const st = document.getElementById('importStatus');
-  const setErr = msg => { st.textContent = '❌ ' + msg; st.style.color = '#fc8181'; setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 5000); };
+  if (!st) return;
+  const setErr = msg => {
+    st.textContent = '❌ ' + msg; st.style.color = '#fc8181';
+    setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 5000);
+  };
   try {
     st.textContent = 'Import en cours…'; st.style.color = '';
     const text = await _readFileText(file);
-    const isGPX = (file.name && file.name.toLowerCase().endsWith('.gpx')) || (typeof text === 'string' && (text.trim().startsWith('<gpx') || text.includes('<trk') || text.includes('<trkpt')));
-    let geo = isGPX ? _gpx2geo(new DOMParser().parseFromString(text, 'text/xml')) : JSON.parse(text);
+    if (!text || !text.trim()) { setErr('Fichier vide'); return; }
+
+    /* Détection GPX : d'abord par contenu (plus fiable que le nom sur mobile) */
+    const trimmed = text.trim();
+    const isXML   = trimmed.startsWith('<?xml') || trimmed.startsWith('<gpx') || trimmed.startsWith('<kml');
+    const hasGPX  = trimmed.includes('<trk') || trimmed.includes('<trkpt') || trimmed.includes('<rte') || trimmed.includes('<rtept') || trimmed.includes('<wpt');
+    const nameGPX = file.name && file.name.toLowerCase().endsWith('.gpx');
+    const isGPX   = nameGPX || (isXML && hasGPX) || hasGPX;
+
+    let geo;
+    if (isGPX) {
+      const xml = new DOMParser().parseFromString(text, 'text/xml');
+      geo = _gpx2geo(xml);
+    } else {
+      /* Tenter comme GeoJSON */
+      try { geo = JSON.parse(text); }
+      catch (e) { setErr('Format non reconnu (ni GPX ni GeoJSON)'); return; }
+    }
+
     if (!geo || !geo.features || !geo.features.length) { setErr('Aucune trace exploitable'); return; }
-    state.manualPts = []; state.manualCoords = [];
-    routeLayer.clearLayers(); editMarkersGrp.clearLayers();
+
+    state.manualPts = [];
+    state.manualCoords = [];
+    routeLayer.clearLayers();
+    editMarkersGrp.clearLayers();
+
     let coords = [];
     geo.features.forEach(f => {
       if (!f.geometry) return;
       if (f.geometry.type === 'LineString')      coords.push(...f.geometry.coordinates);
       if (f.geometry.type === 'MultiLineString') f.geometry.coordinates.forEach(s => coords.push(...s));
+      /* Support des routes GPX (<rte>) qui deviennent des LineString aussi */
     });
-    if (!coords.length) { setErr('Trace non lisible'); return; }
+    if (!coords.length) { setErr('Trace non lisible — aucune coordonnée trouvée'); return; }
+
     /* Interpoler altitudes manquantes */
     const rawEle = coords.map(c => c.length >= 3 && c[2] != null && c[2] !== 0 ? c[2] : null);
     for (let i = 0; i < rawEle.length; i++) {
       if (rawEle[i] === null) {
         let prev = i - 1; while (prev >= 0 && rawEle[prev] === null) prev--;
         let next = i + 1; while (next < rawEle.length && rawEle[next] === null) next++;
-        if (prev >= 0 && next < rawEle.length) rawEle[i] = rawEle[prev] + (rawEle[next] - rawEle[prev]) * (i - prev) / (next - prev);
-        else if (prev >= 0) rawEle[i] = rawEle[prev];
-        else if (next < rawEle.length) rawEle[i] = rawEle[next];
-        else rawEle[i] = 0;
+        if (prev >= 0 && next < rawEle.length)  rawEle[i] = rawEle[prev] + (rawEle[next] - rawEle[prev]) * (i - prev) / (next - prev);
+        else if (prev >= 0)                     rawEle[i] = rawEle[prev];
+        else if (next < rawEle.length)          rawEle[i] = rawEle[next];
+        else                                    rawEle[i] = 0;
       }
     }
-    coords.forEach((c, i) => { if (c.length >= 2) state.manualCoords.push([c[1], c[0], rawEle[i]]); });
+
+    coords.forEach((c, i) => {
+      if (c.length >= 2) state.manualCoords.push([c[1], c[0], rawEle[i]]);
+    });
+
     const lls = state.manualCoords.map(c => [c[0], c[1]]);
-    L.polyline(lls, { color: 'red', weight: 4 }).addTo(routeLayer);
-    mkEditable(lls); updateStartEndMarkers(lls);
+    L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
+    mkEditable(lls);
+    updateStartEndMarkers(lls);
     map.fitBounds(lls, { padding: [20, 20] });
     drawElevation(state.manualCoords.map(c => c[2] ?? null), lls);
-    state.importedTrace = true; state.userMovedMap = false;
-    st.textContent = '✅ Import OK'; st.style.color = '#52b788';
-    setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 2000);
+
+    state.importedTrace = true;
+    state.userMovedMap  = false;
+    saveLocal();   /* ★ persister la trace importée immédiatement */
+
+    st.textContent = `✅ Import OK — ${state.manualCoords.length} points`;
+    st.style.color = '#52b788';
+    setTimeout(() => { st.textContent = ''; st.style.color = ''; }, 3000);
     showChartArea(true);
-  } catch (e) { console.error('Import:', e); setErr(e.message || 'Erreur inconnue'); }
+    showToast(`📂 ${file.name || 'GPX'} importé`);
+  } catch (e) {
+    console.error('[Import GPX]', e);
+    setErr(e.message || 'Erreur inconnue');
+  }
 }
 
+/* triggerImport : sur desktop le input.click() marche, sur mobile le
+   <label for="importFile"> dans le HTML est la vraie entrée (pas de click()). */
 export function triggerImport() {
-  document.getElementById('importFile').value = '';
-  document.getElementById('importFile').click();
+  const el = document.getElementById('importFile');
+  if (el) { el.value = ''; el.click(); }
 }
 
 /* ── EXPORT ── */
 export function exportGPX() {
   if (state.manualCoords.length < 2) { showToast('Aucune trace à exporter'); return; }
   if (typeof togpx !== 'function') { showToast('Lib togpx non chargée'); return; }
-  const geo = { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: state.manualCoords.map(c => [c[1], c[0], c[2] || 0]) }, properties: { name: 'MapiBiBi' } }] };
+  const geo = {
+    type: 'FeatureCollection',
+    features: [{
+      type: 'Feature',
+      geometry: {
+        type: 'LineString',
+        coordinates: state.manualCoords.map(c => [c[1], c[0], c[2] || 0])
+      },
+      properties: { name: 'MapiBiBi' }
+    }]
+  };
   const gpx  = togpx(geo);
   const blob = new Blob([gpx], { type: 'application/gpx+xml' });
   const now  = new Date();
@@ -90,10 +155,15 @@ export function exportGPX() {
 
 /* ── INIT drag & drop + input ── */
 export function initGpxListeners() {
-  document.getElementById('importFile').addEventListener('change', e => {
-    const f = e.target.files && e.target.files[0];
-    if (f) handleImport(f);
-  });
+  const inp = document.getElementById('importFile');
+  if (inp) {
+    /* Le change se déclenche que l'import vienne du label (mobile) ou de input.click() (desktop) */
+    inp.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (f) handleImport(f);
+    });
+  }
+  /* Drag & drop (desktop principalement) */
   document.addEventListener('dragover', e => e.preventDefault());
   document.addEventListener('drop', e => {
     e.preventDefault();
