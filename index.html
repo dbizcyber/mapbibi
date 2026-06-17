@@ -307,7 +307,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     </div>
     <div class="opt-row" onclick="toggleOverlay('route')">
       <span class="opt-icon">🟢</span>
-      <div class="opt-text"><div class="opt-label">Trace ORS</div><div class="opt-desc">Itinéraire calculé</div></div>
+      <div class="opt-text"><div class="opt-label">Tracé calculé</div><div class="opt-desc">Itinéraire Valhalla sur sentiers OSM</div></div>
       <span class="opt-arrow" id="ov-route">●</span>
     </div>
     <div class="opt-row" onclick="toggleOverlay('markers')">
@@ -364,7 +364,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     <div class="opt-row" style="cursor:default;pointer-events:none">
       <span class="opt-icon">🟢</span>
       <div class="opt-text">
-        <div class="opt-label">ORS <span style="font-size:11px;opacity:.6">(≤48 pts · 2000/jour)</span></div>
+        <div class="opt-label">Altitudes <span style="font-size:11px;opacity:.6">(SRTM — Open-Elevation)</span></div>
         <div class="opt-desc" id="counter-ors">0 requête ce mois</div>
       </div>
       <span class="opt-arrow" id="counter-ors-badge" style="font-size:13px;font-weight:700;color:#4ade80">0</span>
@@ -372,7 +372,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     <div class="opt-row" style="cursor:default;pointer-events:none">
       <span class="opt-icon">🟣</span>
       <div class="opt-text">
-        <div class="opt-label">Valhalla <span style="font-size:11px;opacity:.6">(>48 pts · 125/mois)</span></div>
+        <div class="opt-label">Routage Valhalla <span style="font-size:11px;opacity:.6">(gratuit · sans clé)</span></div>
         <div class="opt-desc" id="counter-valhalla">0 requête ce mois</div>
       </div>
       <span class="opt-arrow" id="counter-valhalla-badge" style="font-size:13px;font-weight:700;color:#c084fc">0</span>
@@ -428,8 +428,8 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
 <div id="startupPopup">
   <div class="popup-box">
     <h3>🥾 MapiBiBi — Bienvenue</h3>
-    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.1 — Juin 2026 · 100 % outils gratuits</p>
-    <p>Nouveautés : <b>⏱ temps de marche estimé</b> (4 km/h + D+/300 + D−/500) · <b>🧭 alerte d'écart de trace</b> (vibration au-delà de 50 m) · <b>📚 bibliothèque de traces</b> — sauvegardez, nommez et rechargez vos randos. Et toujours : OpenTopoMap, Plan IGN, Valhalla — sans clé API.</p>
+    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.1.1 — Juin 2026 · 100 % outils gratuits</p>
+    <p>Correctif : <b>enregistrement terrain indestructible</b> — la trace GPS survit au changement d'appli, verrou d'écran et kill iOS (sauvegarde à chaque point + reprise automatique). Et : ⏱ temps estimé · 🧭 alerte d'écart · 📚 bibliothèque de traces.</p>
     <p style="font-size:11px;margin-top:8px;opacity:.55">Tapez la carte pour tracer · ⏺️ Enreg. pour capturer votre parcours terrain · ⚙️ Options pour les couches</p>
     <button onclick="closeStartupPopup()">C'est parti 🥾</button>
   </div>
@@ -445,7 +445,7 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
     </button>
     <button onclick="afficherTraceSentiers()" style="width:100%; padding:12px; background:rgba(57,255,20,.15); border:none; border-radius:10px; color:#9aff72; font-size:14px; font-weight:600; cursor:pointer;">
       🥾 Recalculer sur les sentiers
-      <span style="display:block; font-size:11px; font-weight:400; opacity:.7; margin-top:3px;">ORS snape sur les chemins OSM</span>
+      <span style="display:block; font-size:11px; font-weight:400; opacity:.7; margin-top:3px;">Valhalla recale la trace sur les sentiers OSM</span>
     </button>
   </div>
 </div>
