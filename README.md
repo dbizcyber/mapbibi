@@ -36,3 +36,23 @@ Deuxièmement, des écouteurs visibilitychange → hidden, pagehide et freeze d�
 Troisièmement, quand l'appli revient au premier plan (visibilitychange → visible + resume), trois actions : ré-acquisition du wake lock (toujours relâché par l'OS en arrière-plan), getCurrentPosition forcé avec maximumAge: 0 pour réveiller la puce GPS immédiatement (le watchPosition reprend mais peut mettre plusieurs secondes), et relance du watchPosition au cas où le navigateur l'a tué (fréquent sur iOS). Un toast informe du temps passé en arrière-plan (« 📍 Enregistrement repris — 3 min en arrière-plan ») pour que tu saches qu'il y a eu un trou.
 En bonus — j'ai aussi nettoyé les dernières références « ORS » qui traînaient dans l'UI : le label de surcouche, le texte du popup d'enregistrement, les compteurs de stats, et l'indicateur de chargement. Tout dit maintenant « Valhalla » / « gratuit » / « sans clé ».
 Ce qui reste inévitable : sur iOS, si l'appli est gelée pendant 10 minutes, il y aura un trou dans la trace — aucune PWA ne peut faire tourner du GPS en arrière-plan sur iOS. Mais les données avant le trou sont maintenant garanties, et la restauration après kill fonctionne. Sur Android, watchPosition reste souvent actif en arrière-plan avec une fréquence réduite, donc le trou sera bien plus petit, voire inexistant.
+*************************
+# MapiBiBi v9.1.1 — 100 % outils gratuits
+
+Traceur de randonnée pédestre (PWA) — sans aucune clé API.
+
+- **Routage** : Valhalla OSM public (`valhalla1.openstreetmap.de`) — piéton, polyline6 auto-détecté, altitudes intégrées
+- **Altitude terrain** : Open-Elevation (SRTM 30 m) en enrichissement GPS
+- **Fonds de carte** : OpenTopoMap (défaut), Plan IGN (Géoplateforme), OpenStreetMap, Satellite Esri + Waymarked Trails
+- **Hors-ligne** : Service Worker v9 — modules JS cachés à l'installation, pré-cache du fond actif
+
+## v9.1.1 — Enregistrement indestructible
+- Sauvegarde localStorage **à chaque point GPS** (plus toutes les 15 s)
+- Sauvegarde immédiate sur `visibilitychange`, `pagehide`, `freeze` — avant que l'OS ne gèle la page
+- Reprise automatique au retour premier plan : ré-acquisition wake lock, relance watchPosition + getCurrentPosition, toast de reprise
+- Enregistrement compatible changement d'appli, verrou d'écran, kill iOS
+
+## v9.1
+- **⏱ Temps de marche estimé** (4 km/h + D+/300 + D−/500)
+- **🧭 Alerte d'écart de trace** : vibration au-delà de 50 m (hystérésis, désactivable)
+- **📚 Bibliothèque de traces** : sauvegarde nommée IndexedDB, chargement, suppression
