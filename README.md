@@ -56,3 +56,27 @@ Traceur de randonnée pédestre (PWA) — sans aucune clé API.
 - **⏱ Temps de marche estimé** (4 km/h + D+/300 + D−/500)
 - **🧭 Alerte d'écart de trace** : vibration au-delà de 50 m (hystérésis, désactivable)
 - **📚 Bibliothèque de traces** : sauvegarde nommée IndexedDB, chargement, suppression
+
+  
+** v9.2
+  Voici l'audit complet et les correctifs. 19 modules, 100 exports vérifiés, toutes les fonctions onclick du HTML validées contre les expositions window.
+Bugs trouvés et corrigés
+1. Bug critique — controllerchange rechargeait la page pendant l'enregistrement (app.js)
+
+C'est la cause la plus probable de ta perte de trace. Quand le Service Worker se met à jour (ce qui arrive à chaque visite après un déploiement), il déclenche controllerchange → window.location.reload(). Toute la mémoire JS disparaît : state.gpsTracking redevient false, la polyline s'évapore. Maintenant, si un enregistrement est en cours, le reload est bloqué et un toast informe que la mise à jour sera appliquée après l'arrêt.
+2. Pas de reprise automatique après kill (recording.js)
+
+Quand iOS tue la page et que l'utilisateur revient, verifierTraceInterrompue se contentait d'afficher un popup de restauration. Si l'utilisateur ne comprenait pas le popup, la trace semblait « disparue ». Maintenant la reprise est automatique : si le flag REC_ENCOURS_KEY est trouvé au démarrage avec une trace sauvegardée, l'enregistrement redémarre immédiatement — wake lock, GPS, polyline restaurée, stats recalculées, toast « 📍 Enregistrement repris — N pts, ~X min ».
+3. Sauvegarde de sécurité trop timide (recording.js)
+
+La sauvegarde de sécurité (timer 5 s) ignorait les points dont seule l'altitude avait changé (enrichissement Open-Elevation). Le timer force maintenant la sauvegarde systématiquement (force = true), pas seulement quand la longueur du tableau change.
+4. gpsEle tombait à 0 au lieu de null (gps.js)
+
+Quand l'altitude GPS était indisponible ou imprécise, le point stockait ele: 0 au lieu de null. Ça propageait une fausse altitude zéro dans fillEleGaps, smooth et gainElev, créant des D+/D− fictifs.
+5. const { markers } = import('./state.js') cassé (app.js)
+
+Un import() dynamique utilisé sans await — renvoyait une Promise, pas le module. Variable markers inutilisée donc sans effet visible, mais du code mort incorrect. Supprimé.
+6. map.invalidateSize() manquant au retour de l'arrière-plan (recording.js)
+
+Leaflet peut avoir un rendu corrompu après un passage en arrière-plan sur mobile. L'appel à invalidateSize() dans le callback de reprise force le rafraîchissement du canvas.
+Vérification d'interop automatisée — script Python qui croise les 100 exports des 19 modules contre tous les imports : aucune incohérence. Les 30 fonctions onclick du HTML sont toutes présentes dans Object.assign(window, {...}).
