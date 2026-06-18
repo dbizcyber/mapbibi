@@ -1,6 +1,9 @@
 /* ── recording.js — session d'enregistrement GPS ──
-   v9.1 — sauvegarde à chaque point GPS + résilience arrière-plan.
-   La trace survit aux changements d'appli, verrou d'écran et kill iOS. */
+   v9.2 — enregistrement indestructible :
+   · sauvegarde à chaque point GPS (localStorage synchrone)
+   · sauvegarde forcée sur visibilitychange/pagehide/freeze
+   · reprise automatique après kill iOS / reload SW
+   · flag gpsTracking persisté pour auto-reprise */
 import { state }                     from './state.js';
 import { activerWakeLock, desactiverWakeLock, resetLivePolyline, clearGpsRecState,
          setOnNewPoint, setLifecycleCallbacks } from './gps.js';
@@ -8,37 +11,32 @@ import { switchTab, showChartArea }  from './ui.js';
 import { showToast, totalDist, gainElev } from './utils.js';
 import { rebuildRoute }              from './routing.js';
 import { drawElevation }             from './elevation.js';
-import { mkEditable, updateStartEndMarkers, routeLayer } from './map.js';
+import { mkEditable, updateStartEndMarkers, routeLayer, map } from './map.js';
 import { saveLocal }                 from './storage.js';
 import { REC_LIVE_KEY, REC_ENCOURS_KEY } from './storage.js';
 
 let _statsTimer        = null;
 let _saveLiveTimer     = null;
 let _derniereSauvegarde = null;
-let _lastSavedLength   = 0;    /* évite les réécritures inutiles */
+let _lastSavedLength   = 0;
 
-/* ═══════════ SAUVEGARDE IMMÉDIATE ═══════════
-   Appelée à chaque nouveau point GPS ET à chaque passage en arrière-plan.
-   Écriture synchrone dans localStorage — indispensable avant que l'OS
-   ne gèle la page (pas de promesse, pas de setTimeout). */
-function _sauvegarderMaintenant() {
+/* ═══════════ SAUVEGARDE IMMÉDIATE ═══════════ */
+function _sauvegarderMaintenant(force) {
   if (!state.gpsTracking || !state.recTrace.length) return;
-  /* N'écrire que si la trace a changé */
-  if (state.recTrace.length === _lastSavedLength) return;
+  /* Écrire si la trace a changé OU si on force (suspend/pagehide) */
+  if (!force && state.recTrace.length === _lastSavedLength) return;
   try {
     localStorage.setItem(REC_LIVE_KEY, JSON.stringify(state.recTrace));
     _lastSavedLength    = state.recTrace.length;
     _derniereSauvegarde = Date.now();
   } catch (e) {
-    /* localStorage plein — on continue quand même l'enregistrement */
     console.warn('[Rec] localStorage plein:', e.message);
   }
 }
 
-/* ═══════════ LIFECYCLE CALLBACKS (appelés par gps.js) ═══════════ */
+/* ═══════════ LIFECYCLE (appelés par gps.js) ═══════════ */
 function _onSuspend() {
-  /* Sauvegarde immédiate AVANT que l'OS ne gèle / tue la page */
-  _sauvegarderMaintenant();
+  _sauvegarderMaintenant(true);  /* force = true : inclut les élévations enrichies */
   console.log(`[Rec] Passage arrière-plan — ${state.recTrace.length} pts sauvegardés`);
 }
 
@@ -51,7 +49,8 @@ function _onResume(gapMs) {
     showToast(`📍 Enregistrement repris — ${gapStr}`, 3500);
     console.log(`[Rec] Reprise après ${gapStr} — ${state.recTrace.length} pts`);
   }
-  /* Mettre à jour l'UI immédiatement au retour */
+  /* Rafraîchir le rendu de la carte (peut glitcher après un passage en arrière-plan) */
+  try { map.invalidateSize(); } catch (e) {}
   _mettreAJourStatsLive();
   _mettreAJourIndicateurSauvegarde();
 }
@@ -71,46 +70,117 @@ export function toggleAutoRecording() {
   state.gpsTracking = !state.gpsTracking;
   const btn = document.getElementById('tab-rec');
   if (state.gpsTracking) {
+    _lancerEnregistrement([], true);
+  } else {
+    _arreterEnregistrement();
+  }
+}
+
+/* Facteur commun : démarre l'enregistrement avec une trace optionnelle (vide ou restaurée) */
+function _lancerEnregistrement(traceInitiale, isNew) {
+  state.gpsTracking = true;
+  if (isNew) {
     state.recTrace = [];
-    _lastSavedLength = 0;
     clearGpsRecState();
     resetLivePolyline();
     routeLayer.clearLayers();
-    btn.classList.add('recording');
-    btn.querySelector('.tab-icon').textContent = '⏹️';
-    activerWakeLock();
-    /* Câbler la sauvegarde à chaque point GPS */
-    setOnNewPoint(_sauvegarderMaintenant);
-    /* Câbler les callbacks de cycle de vie (suspend/resume) */
-    setLifecycleCallbacks(_onSuspend, _onResume);
-    _demarrerSauvegardeLive();
-    _demarrerStatsLive();
-    document.getElementById('peek-normal').style.display = 'none';
-    document.getElementById('peek-live').style.display   = 'flex';
-    showToast('Enregistrement GPS démarré');
   } else {
-    btn.classList.remove('recording');
-    btn.querySelector('.tab-icon').textContent = '⏺️';
-    /* Sauvegarder une dernière fois avant de tout nettoyer */
-    _sauvegarderMaintenant();
-    resetLivePolyline();
-    desactiverWakeLock();
-    setOnNewPoint(null);
-    setLifecycleCallbacks(null, null);
-    _arreterSauvegardeLive();
-    _arreterStatsLive();
-    document.getElementById('peek-normal').style.display = 'flex';
-    document.getElementById('peek-live').style.display   = 'none';
-    const fabGps = document.getElementById('fab-gps');
-    if (fabGps) fabGps.textContent = '📍';
-    if (state.recTrace.length > 2) {
-      document.getElementById('rec-choix-info').textContent = `${state.recTrace.length} points enregistrés — comment afficher la trace ?`;
-      document.getElementById('recChoixPopup').style.display = 'flex';
-    } else {
-      _nettoyerTraceLive();
-      showToast('Enregistrement arrêté — pas assez de points');
-    }
+    state.recTrace = traceInitiale;
+    /* Redessiner la polyline restaurée */
+    _restaurerPolyline();
   }
+  _lastSavedLength = 0;
+  const btn = document.getElementById('tab-rec');
+  if (btn) { btn.classList.add('recording'); btn.querySelector('.tab-icon').textContent = '⏹️'; }
+  activerWakeLock();
+  setOnNewPoint(() => _sauvegarderMaintenant(false));
+  setLifecycleCallbacks(_onSuspend, _onResume);
+  _demarrerSauvegardeLive();
+  _demarrerStatsLive();
+  const pn = document.getElementById('peek-normal');
+  const pl = document.getElementById('peek-live');
+  if (pn) pn.style.display = 'none';
+  if (pl) pl.style.display = 'flex';
+}
+
+function _arreterEnregistrement() {
+  state.gpsTracking = false;
+  _sauvegarderMaintenant(true);
+  const btn = document.getElementById('tab-rec');
+  if (btn) { btn.classList.remove('recording'); btn.querySelector('.tab-icon').textContent = '⏺️'; }
+  resetLivePolyline();
+  desactiverWakeLock();
+  setOnNewPoint(null);
+  setLifecycleCallbacks(null, null);
+  _arreterSauvegardeLive();
+  _arreterStatsLive();
+  /* Effacer le flag de persistance */
+  try { localStorage.removeItem(REC_ENCOURS_KEY); } catch (e) {}
+  const pn = document.getElementById('peek-normal');
+  const pl = document.getElementById('peek-live');
+  if (pn) pn.style.display = 'flex';
+  if (pl) pl.style.display = 'none';
+  const fabGps = document.getElementById('fab-gps');
+  if (fabGps) fabGps.textContent = '📍';
+  if (state.recTrace.length > 2) {
+    document.getElementById('rec-choix-info').textContent = `${state.recTrace.length} points enregistrés — comment afficher la trace ?`;
+    document.getElementById('recChoixPopup').style.display = 'flex';
+  } else {
+    _nettoyerTraceLive();
+    showToast('Enregistrement arrêté — pas assez de points');
+  }
+}
+
+/* Redessine la polyline à partir de la trace en mémoire */
+function _restaurerPolyline() {
+  if (!state.recTrace.length) return;
+  resetLivePolyline();
+  /* routeLayer.clearLayers(); — NE PAS effacer, on AJOUTE la trace restaurée */
+  const lls = state.recTrace.map(p => [p.lat, p.lng]);
+  const poly = L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.0, opacity: 0.9 }).addTo(routeLayer);
+  /* Réassigner pour que _updateLiveTrace puisse l'utiliser via gps.js */
+  /* On importe resetLivePolyline mais on a besoin de réassigner le livePolyline
+     dans gps.js — on passe par une astuce : on reconstruit et gps.js
+     détectera qu'il n'a pas de livePolyline et en créera un nouveau au prochain point */
+  if (lls.length) map.panTo(lls[lls.length - 1]);
+}
+
+/* ═══════════ REPRISE AUTOMATIQUE APRÈS KILL/RELOAD ═══════════
+   Appelée par app.js au démarrage. Si un enregistrement était en cours,
+   on le reprend automatiquement au lieu de juste proposer la restauration. */
+export function verifierTraceInterrompue() {
+  try {
+    const encours = localStorage.getItem(REC_ENCOURS_KEY);
+    if (!encours) return;
+    const raw = localStorage.getItem(REC_LIVE_KEY);
+    if (!raw) { _nettoyerTraceLive(); return; }
+    const pts = JSON.parse(raw);
+    if (!pts || pts.length < 2) { _nettoyerTraceLive(); return; }
+
+    /* ★ Reprise AUTOMATIQUE — l'enregistrement continue comme s'il ne s'était rien passé */
+    _lancerEnregistrement(pts, false);
+    const dureeMin = (pts[0].t && pts[pts.length - 1].t)
+      ? Math.round((pts[pts.length - 1].t - pts[0].t) / 60000) : null;
+    const msg = dureeMin
+      ? `📍 Enregistrement repris — ${pts.length} pts, ~${dureeMin} min`
+      : `📍 Enregistrement repris — ${pts.length} pts`;
+    showToast(msg, 4000);
+    console.log(`[Rec] Auto-reprise : ${pts.length} pts restaurés`);
+  } catch (e) {
+    console.error('[Rec] restauration:', e);
+    _nettoyerTraceLive();
+  }
+}
+
+/* Ancienne API conservée pour le popup de restauration (cas extrême) */
+export function restaurerTraceLive(oui) {
+  document.getElementById('recRestorePopup').style.display = 'none';
+  _nettoyerTraceLive();
+  if (!oui || !window._ptsInterrompus) { window._ptsInterrompus = null; return; }
+  state.recTrace = window._ptsInterrompus;
+  window._ptsInterrompus = null;
+  document.getElementById('rec-choix-info').textContent = `${state.recTrace.length} points restaurés — comment afficher la trace ?`;
+  document.getElementById('recChoixPopup').style.display = 'flex';
 }
 
 /* ═══════════ STATS LIVE ═══════════ */
@@ -151,17 +221,12 @@ function _mettreAJourStatsLive() {
   _mettreAJourIndicateurSauvegarde();
 }
 
-/* ═══════════ SAUVEGARDE LIVE (filet de sécurité) ═══════════
-   Le timer est un filet : la vraie sauvegarde se fait à chaque point
-   et à chaque passage en arrière-plan. Ce timer attrape les cas où
-   l'altitude est mise à jour (Open-Elevation) sans nouveau point GPS. */
+/* ═══════════ SAUVEGARDE LIVE — filet de sécurité ═══════════ */
 function _demarrerSauvegardeLive() {
   try { localStorage.setItem(REC_ENCOURS_KEY, '1'); } catch (e) {}
   _derniereSauvegarde = null;
   _lastSavedLength = 0;
-  _saveLiveTimer = setInterval(() => {
-    _sauvegarderMaintenant();
-  }, 5000);  /* 5 s au lieu de 15 — plus résilient si le timer est throttlé */
+  _saveLiveTimer = setInterval(() => _sauvegarderMaintenant(true), 5000);
 }
 function _arreterSauvegardeLive() {
   if (_saveLiveTimer) { clearInterval(_saveLiveTimer); _saveLiveTimer = null; }
@@ -174,33 +239,6 @@ function _mettreAJourIndicateurSauvegarde() {
   if (!el || !_derniereSauvegarde) return;
   const secAgo = Math.round((Date.now() - _derniereSauvegarde) / 1000);
   el.textContent = secAgo < 5 ? '💾 Trace sauvegardée' : `💾 Sauvegardée il y a ${secAgo}s`;
-}
-
-/* ═══════════ RESTAURATION APRÈS KILL iOS ═══════════ */
-export function verifierTraceInterrompue() {
-  try {
-    if (!localStorage.getItem(REC_ENCOURS_KEY)) return;
-    const raw = localStorage.getItem(REC_LIVE_KEY);
-    if (!raw) { _nettoyerTraceLive(); return; }
-    const pts = JSON.parse(raw);
-    if (!pts || pts.length < 3) { _nettoyerTraceLive(); return; }
-    window._ptsInterrompus = pts;
-    const dureeMin = (pts[0].t && pts[pts.length - 1].t)
-      ? Math.round((pts[pts.length - 1].t - pts[0].t) / 60000) : '?';
-    document.getElementById('rec-restore-info').textContent =
-      `${pts.length} points GPS sauvegardés${dureeMin !== '?' ? ' · ~' + dureeMin + ' min' : ''} — enregistrement interrompu.`;
-    document.getElementById('recRestorePopup').style.display = 'flex';
-  } catch (e) { _nettoyerTraceLive(); }
-}
-
-export function restaurerTraceLive(oui) {
-  document.getElementById('recRestorePopup').style.display = 'none';
-  _nettoyerTraceLive();
-  if (!oui || !window._ptsInterrompus) { window._ptsInterrompus = null; return; }
-  state.recTrace = window._ptsInterrompus;
-  window._ptsInterrompus = null;
-  document.getElementById('rec-choix-info').textContent = `${state.recTrace.length} points restaurés — comment afficher la trace ?`;
-  document.getElementById('recChoixPopup').style.display = 'flex';
 }
 
 /* ═══════════ AFFICHAGE APRÈS ENREGISTREMENT ═══════════ */
@@ -243,3 +281,6 @@ function _simplifierTrace(trace, maxPts) {
   for (let i = 0; i < maxPts; i++) result.push(trace[Math.round(i * step)]);
   return result;
 }
+
+/* ═══════════ QUERY (pour app.js — bloquer le reload SW) ═══════════ */
+export function isRecording() { return state.gpsTracking; }
