@@ -17,7 +17,8 @@ import { rebuildRoute }                        from './routing.js';
 import { drawElevation, destroyCharts }        from './elevation.js';
 import { initGPS }                             from './gps.js';
 import { onclickRec, stopRecording, verifierTraceInterrompue,
-         restaurerTraceLive, afficherTraceBrut, afficherTraceSentiers } from './recording.js';
+         restaurerTraceLive, afficherTraceBrut, afficherTraceSentiers,
+         isRecording }                         from './recording.js';
 import { handleImport, triggerImport, exportGPX, initGpxListeners } from './gpx.js';
 import { openSearch, closeSearch, initSearchListeners } from './search.js';
 import { openBouclePanel, annulerBoucle, boucleHandleTap } from './boucle.js';
@@ -128,7 +129,6 @@ function clearAll() {
   state.importedTrace = false;
   state.userMovedMap  = false;
   import('./gps.js').then(m => m.resetLivePolyline());
-  const { markers }   = import('./state.js');
   routeLayer.clearLayers();
   markersGrp.clearLayers();
   editMarkersGrp.clearLayers();
@@ -212,6 +212,12 @@ window.addEventListener('load', async () => {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (refreshing) return;
+      /* ★ NE PAS recharger si un enregistrement est en cours — sinon la trace disparaît */
+      if (isRecording()) {
+        console.warn('[SW] Mise à jour ignorée — enregistrement en cours');
+        showToast('🔄 Mise à jour disponible — sera appliquée à l\'arrêt de l\'enregistrement', 4000);
+        return;
+      }
       refreshing = true;
       window.location.reload();
     });
