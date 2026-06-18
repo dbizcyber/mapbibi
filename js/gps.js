@@ -104,7 +104,7 @@ function _handlePosition(pos) {
         const speed = dt > 0 ? dist / dt : 0;
         if (speed <= MAX_SPEED) {
           const gpsEle = (alt != null && altitudeAccuracy != null && altitudeAccuracy < 30)
-            ? Math.round(alt) : 0;
+            ? Math.round(alt) : null;
           const idx = state.recTrace.length;
           state.recTrace.push({ lat, lng, ele: gpsEle, eleSource: 'gps', acc: accuracy || 0, t: now });
           _lastRecPos  = newLL;
@@ -119,7 +119,7 @@ function _handlePosition(pos) {
     } else {
       /* Premier point */
       const gpsEle = (alt != null && altitudeAccuracy != null && altitudeAccuracy < 30)
-        ? Math.round(alt) : 0;
+        ? Math.round(alt) : null;
       const idx = state.recTrace.length;
       state.recTrace.push({ lat, lng, ele: gpsEle, eleSource: 'gps', acc: accuracy || 0, t: Date.now() });
       _lastRecPos  = newLL;
