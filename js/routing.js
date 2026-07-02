@@ -131,7 +131,9 @@ export async function rebuildRoute() {
 
   } catch (e) {
     clearTimeout(timeoutId);
-    if (e.name === 'AbortError') {
+    /* v9.1.2 : ctrl.abort('timeout') rejette fetch avec la *string* 'timeout',
+       pas une AbortError — on teste donc signal.aborted + signal.reason. */
+    if (e.name === 'AbortError' || ctrl.signal.aborted) {
       if (ctrl.signal.reason === 'timeout') {
         setLoading(false, '⚠ Délai dépassé — réseau trop lent, réessayez');
       }
