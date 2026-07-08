@@ -6,7 +6,8 @@ import { drawElevation } from './elevation.js';
 import { mkEditable, updateStartEndMarkers, refreshPts,
          routeLayer, editMarkersGrp, editPts, map } from './map.js';
 
-const VALHALLA_URL = 'https://valhalla1.openstreetmap.de/route';
+const VALHALLA_URL       = 'https://valhalla1.openstreetmap.de/route';
+const VALHALLA_TRACE_URL = 'https://valhalla1.openstreetmap.de/trace_route';
 const TIMEOUT_MS   = 15000;
 let _routeAbort    = null;
 
@@ -161,5 +162,127 @@ export async function rebuildRoute() {
     refreshPts(() => rebuildRoute());
     saveLocal();
     if (!state.userMovedMap && lls.length) map.panTo(lls[lls.length - 1], { animate: true, duration: 0.4 });
+  }
+}
+
+/* ═══════════ MAP MATCHING — v9.3 ═══════════
+   Recale une trace GPS enregistrée sur le réseau OSM via /trace_route (Meili).
+   Contrairement à /route (qui calcule un itinéraire OPTIMAL entre waypoints),
+   le map matching suit le parcours RÉELLEMENT emprunté — c'est l'outil conçu
+   pour coller une trace GPS bruitée sur les chemins/sentiers/routes.
+   Retourne [ [lat,lng,ele], … ] ou null en cas d'échec. */
+export async function mapMatchTrace(trace) {
+  if (!trace || trace.length < 2) return null;
+
+  /* Sous-échantillonnage léger si trace très dense (limite serveur public).
+     900 pts ≈ un point tous les 10-20 m sur une grande rando : largement
+     assez dense pour que le matching suive chaque bifurcation. */
+  const MAX_PTS = 900;
+  let pts = trace;
+  if (pts.length > MAX_PTS) {
+    const step = (pts.length - 1) / (MAX_PTS - 1);
+    const s = [];
+    for (let i = 0; i < MAX_PTS; i++) s.push(pts[Math.round(i * step)]);
+    pts = s;
+  }
+
+  /* Horodatages relatifs (secondes) — aident le HMM, mais uniquement
+     s'ils sont tous présents et strictement croissants. */
+  let times = null;
+  if (pts.every(p => typeof p.t === 'number')) {
+    const t0 = pts[0].t;
+    const rel = pts.map(p => Math.round((p.t - t0) / 1000));
+    if (rel.every((t, i) => i === 0 || t > rel[i - 1])) times = rel;
+  }
+
+  const body = {
+    shape: pts.map((p, i) => {
+      const o = { lat: p.lat, lon: p.lng };
+      if (times) o.time = times[i];
+      return o;
+    }),
+    costing: 'pedestrian',
+    costing_options: {
+      pedestrian: {
+        walking_speed:         4.5,
+        max_hiking_difficulty: 6,
+        walkway_factor:        0.5,
+        use_tracks:            1.0,
+        use_hills:             0.5,
+        use_ferry:             0.0,
+      }
+    },
+    shape_match: 'map_snap',        /* matching HMM pur — trace GPS bruitée */
+    trace_options: {
+      search_radius:          50,   /* rayon de recherche autour de chaque point */
+      gps_accuracy:           10,   /* bruit GPS supposé (m) */
+      interpolation_distance: 10,   /* fusionne les points < 10 m */
+      breakage_distance:      2000, /* tolère les trous GPS (arrière-plan) */
+    },
+    shape_format: 'polyline6',
+    elevation_interval: 30,
+    format: 'json',
+  };
+
+  const ctrl = new AbortController();
+  const timeoutId = setTimeout(() => ctrl.abort('timeout'), 25000);
+
+  try {
+    const r = await fetch(VALHALLA_TRACE_URL, {
+      method:  'POST',
+      signal:  ctrl.signal,
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    });
+    clearTimeout(timeoutId);
+    if (!r.ok) throw new Error('trace_route HTTP ' + r.status);
+    const d = await r.json();
+
+    const legs = d?.trip?.legs;
+    if (!legs || !legs.length) throw new Error('Réponse vide');
+
+    const matched = [];
+    legs.forEach(leg => {
+      /* Auto-détection de précision (1e6 vs 1e5) contre le 1er point GPS */
+      const c6 = _decodePolyline(leg.shape, 6);
+      const c5 = _decodePolyline(leg.shape, 5);
+      const ref = pts[0];
+      const d6 = Math.abs(c6[0][0] - ref.lat) + Math.abs(c6[0][1] - ref.lng);
+      const d5 = Math.abs(c5[0][0] - ref.lat) + Math.abs(c5[0][1] - ref.lng);
+      const coords2d = d6 <= d5 ? c6 : c5;
+
+      const elevations = leg.elevation || [];
+      coords2d.forEach((c, i) => {
+        let ele = null;
+        if (elevations.length > 1) {
+          const ratio = i / (coords2d.length - 1) * (elevations.length - 1);
+          const lo = Math.floor(ratio), hi = Math.min(Math.ceil(ratio), elevations.length - 1);
+          ele = Math.round(elevations[lo] + (elevations[hi] - elevations[lo]) * (ratio - lo));
+        }
+        matched.push([c[0], c[1], ele]);
+      });
+    });
+
+    if (matched.length < 2) throw new Error('Aucune coordonnée décodée');
+
+    /* Si le serveur n'a pas renvoyé d'altitudes, reprendre celles de la trace
+       enregistrée (Open-Elevation) par plus proche voisin séquentiel. */
+    if (matched.every(c => c[2] == null)) {
+      let j = 0;
+      matched.forEach(c => {
+        /* avancer le curseur tant que le point suivant de la trace est plus proche */
+        const d2 = (p) => (p.lat - c[0]) ** 2 + (p.lng - c[1]) ** 2;
+        while (j < trace.length - 1 && d2(trace[j + 1]) <= d2(trace[j])) j++;
+        c[2] = trace[j].ele ?? null;
+      });
+    }
+
+    console.log(`[MapMatch] OK — ${pts.length} pts GPS → ${matched.length} pts recalés, ${legs.length} leg(s)`);
+    return matched;
+
+  } catch (e) {
+    clearTimeout(timeoutId);
+    console.warn('[MapMatch] échec:', e.message || e);
+    return null;
   }
 }
