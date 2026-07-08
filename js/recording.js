@@ -1,4 +1,5 @@
 /* ── recording.js — session d'enregistrement GPS ──
+   v9.3 — recalage sur sentiers par MAP MATCHING (/trace_route)
    v9.2 — enregistrement indestructible :
    · sauvegarde à chaque point GPS (localStorage synchrone)
    · sauvegarde forcée sur visibilitychange/pagehide/freeze
@@ -9,7 +10,7 @@ import { activerWakeLock, desactiverWakeLock, resetLivePolyline, clearGpsRecStat
          setOnNewPoint, setLifecycleCallbacks } from './gps.js';
 import { switchTab, showChartArea }  from './ui.js';
 import { showToast, totalDist, gainElev } from './utils.js';
-import { rebuildRoute }              from './routing.js';
+import { rebuildRoute, mapMatchTrace } from './routing.js';
 import { drawElevation }             from './elevation.js';
 import { mkEditable, updateStartEndMarkers, routeLayer, map } from './map.js';
 import { saveLocal }                 from './storage.js';
@@ -260,17 +261,46 @@ export function afficherTraceBrut() {
 export async function afficherTraceSentiers() {
   document.getElementById('recChoixPopup').style.display = 'none';
   _nettoyerTraceLive();
+  showToast('⏳ Calage de la trace sur les sentiers…', 5000);
+
+  /* ★ v9.3 — MAP MATCHING (/trace_route) et non plus routage (/route).
+     /route calculait un itinéraire OPTIMAL entre 40 waypoints simplifiés :
+     entre deux waypoints Valhalla prenait librement n'importe quel chemin,
+     d'où une trace qui ne suivait pas les sentiers réellement empruntés.
+     Le map matching colle la trace GPS dense sur le parcours RÉEL. */
+  const matched = await mapMatchTrace(state.recTrace);
+
+  if (matched && matched.length >= 2) {
+    state.manualCoords = matched;
+    /* Waypoints d'édition (poignées) : version simplifiée de la trace */
+    const pts = _simplifierTrace(state.recTrace, 40);
+    state.manualPts = pts.map(p => [p.lng, p.lat]);
+    routeLayer.clearLayers();
+    const lls = state.manualCoords.map(c => [c[0], c[1]]);
+    L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
+    mkEditable(lls);
+    updateStartEndMarkers(lls);
+    drawElevation(state.manualCoords.map(c => c[2] ?? null), lls);
+    saveLocal();
+    showChartArea(true);
+    showToast(`🥾 Trace recalée sur les sentiers — ${matched.length} points`);
+    return;
+  }
+
+  /* Repli 1 : ancien recalcul par itinéraire (mieux que rien si matching KO) */
+  console.warn('[Rec] Map matching indisponible — repli sur /route');
   const pts = _simplifierTrace(state.recTrace, 40);
   state.manualPts = pts.map(p => [p.lng, p.lat]);
   routeLayer.clearLayers();
   const coordsAvant = state.manualCoords.length;
-  showToast('⏳ Recalcul sur les sentiers…', 4000);
   await rebuildRoute();
   if (state.manualCoords.length === coordsAvant && state.recTrace.length > 0) {
+    /* Repli 2 : trace GPS brute */
     showToast('⚠ Routage indisponible — tracé GPS brut affiché', 4000);
     afficherTraceBrut();
     return;
   }
+  showToast('⚠ Calage approximatif (itinéraire recalculé)', 4000);
   showChartArea(true);
 }
 
