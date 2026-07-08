@@ -165,7 +165,7 @@ export async function rebuildRoute() {
   }
 }
 
-/* ═══════════ MAP MATCHING — v9.3 ═══════════
+/* ═══════════ MAP MATCHING — v9.4 ═══════════
    Recale une trace GPS enregistrée sur le réseau OSM via /trace_route (Meili).
    Contrairement à /route (qui calcule un itinéraire OPTIMAL entre waypoints),
    le map matching suit le parcours RÉELLEMENT emprunté — c'est l'outil conçu
