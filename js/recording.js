@@ -1,5 +1,5 @@
 /* ── recording.js — session d'enregistrement GPS ──
-   v9.3 — recalage sur sentiers par MAP MATCHING (/trace_route)
+   v9.4 — recalage sur sentiers par MAP MATCHING (/trace_route)
    v9.2 — enregistrement indestructible :
    · sauvegarde à chaque point GPS (localStorage synchrone)
    · sauvegarde forcée sur visibilitychange/pagehide/freeze
