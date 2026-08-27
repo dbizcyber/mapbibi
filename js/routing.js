@@ -31,11 +31,6 @@ function _decodePolyline(encoded, precision) {
   return coords;
 }
 
-/* Fusionne les coordonnées 2D décodées avec les altitudes du tableau separé */
-function _mergeElevations(coords2d, elevations) {
-  return coords2d.map((c, i) => [c[0], c[1], elevations?.[i] ?? 0]);
-}
-
 /* ── Corps de requête Valhalla natif ── */
 function _buildRequest(pts) {
   return {

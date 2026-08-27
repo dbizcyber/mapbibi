@@ -6,13 +6,14 @@
    · reprise automatique après kill iOS / reload SW
    · flag gpsTracking persisté pour auto-reprise */
 import { state }                     from './state.js';
-import { activerWakeLock, desactiverWakeLock, resetLivePolyline, clearGpsRecState,
+import { activerWakeLock, desactiverWakeLock, resetLivePolyline, setLivePolyline,
+         clearGpsRecState, restartWatch,
          setOnNewPoint, setLifecycleCallbacks } from './gps.js';
 import { switchTab, showChartArea }  from './ui.js';
 import { showToast, totalDist, gainElev } from './utils.js';
 import { rebuildRoute, mapMatchTrace } from './routing.js';
 import { drawElevation }             from './elevation.js';
-import { mkEditable, updateStartEndMarkers, routeLayer, map } from './map.js';
+import { mkEditable, updateStartEndMarkers, routeLayer, editMarkersGrp, markersGrp, editPts, map } from './map.js';
 import { saveLocal }                 from './storage.js';
 import { REC_LIVE_KEY, REC_ENCOURS_KEY } from './storage.js';
 
@@ -80,20 +81,27 @@ export function toggleAutoRecording() {
 /* Facteur commun : démarre l'enregistrement avec une trace optionnelle (vide ou restaurée) */
 function _lancerEnregistrement(traceInitiale, isNew) {
   state.gpsTracking = true;
+  /* Un enregistrement est exclusif : on repart d'une carte propre pour éviter
+     qu'une trace manuelle/importée résiduelle ne se superpose à la trace enregistrée
+     (cas notamment de la reprise auto au démarrage après restauration localStorage). */
+  routeLayer.clearLayers();
+  editMarkersGrp.clearLayers();
+  markersGrp.clearLayers();
+  editPts.clearLayers();
   if (isNew) {
     state.recTrace = [];
     clearGpsRecState();
     resetLivePolyline();
-    routeLayer.clearLayers();
   } else {
     state.recTrace = traceInitiale;
-    /* Redessiner la polyline restaurée */
+    /* Redessiner la polyline restaurée ET la réassigner à gps.js */
     _restaurerPolyline();
   }
   _lastSavedLength = 0;
   const btn = document.getElementById('tab-rec');
   if (btn) { btn.classList.add('recording'); btn.querySelector('.tab-icon').textContent = '⏹️'; }
   activerWakeLock();
+  restartWatch();   /* bascule le GPS en haute précision pour l'enregistrement */
   setOnNewPoint(() => _sauvegarderMaintenant(false));
   setLifecycleCallbacks(_onSuspend, _onResume);
   _demarrerSauvegardeLive();
@@ -107,6 +115,7 @@ function _lancerEnregistrement(traceInitiale, isNew) {
 function _arreterEnregistrement() {
   state.gpsTracking = false;
   _sauvegarderMaintenant(true);
+  restartWatch();   /* revient en précision standard (sobriété batterie) */
   const btn = document.getElementById('tab-rec');
   if (btn) { btn.classList.remove('recording'); btn.querySelector('.tab-icon').textContent = '⏺️'; }
   resetLivePolyline();
@@ -132,17 +141,14 @@ function _arreterEnregistrement() {
   }
 }
 
-/* Redessine la polyline à partir de la trace en mémoire */
+/* Redessine la polyline à partir de la trace en mémoire (routeLayer déjà vidé par l'appelant) */
 function _restaurerPolyline() {
   if (!state.recTrace.length) return;
-  resetLivePolyline();
-  /* routeLayer.clearLayers(); — NE PAS effacer, on AJOUTE la trace restaurée */
   const lls = state.recTrace.map(p => [p.lat, p.lng]);
   const poly = L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.0, opacity: 0.9 }).addTo(routeLayer);
-  /* Réassigner pour que _updateLiveTrace puisse l'utiliser via gps.js */
-  /* On importe resetLivePolyline mais on a besoin de réassigner le livePolyline
-     dans gps.js — on passe par une astuce : on reconstruit et gps.js
-     détectera qu'il n'a pas de livePolyline et en créera un nouveau au prochain point */
+  /* ★ Réassigner CETTE polyline à gps.js : _updateLiveTrace la fera grandir au
+     prochain point, au lieu d'en créer une 2ᵉ (source de la double trace rouge). */
+  setLivePolyline(poly);
   if (lls.length) map.panTo(lls[lls.length - 1]);
 }
 
@@ -171,17 +177,6 @@ export function verifierTraceInterrompue() {
     console.error('[Rec] restauration:', e);
     _nettoyerTraceLive();
   }
-}
-
-/* Ancienne API conservée pour le popup de restauration (cas extrême) */
-export function restaurerTraceLive(oui) {
-  document.getElementById('recRestorePopup').style.display = 'none';
-  _nettoyerTraceLive();
-  if (!oui || !window._ptsInterrompus) { window._ptsInterrompus = null; return; }
-  state.recTrace = window._ptsInterrompus;
-  window._ptsInterrompus = null;
-  document.getElementById('rec-choix-info').textContent = `${state.recTrace.length} points restaurés — comment afficher la trace ?`;
-  document.getElementById('recChoixPopup').style.display = 'flex';
 }
 
 /* ═══════════ STATS LIVE ═══════════ */
@@ -246,7 +241,9 @@ function _mettreAJourIndicateurSauvegarde() {
 export function afficherTraceBrut() {
   document.getElementById('recChoixPopup').style.display = 'none';
   _nettoyerTraceLive();
-  state.manualCoords = state.recTrace.map(p => [p.lat, p.lng, p.ele ?? null]);
+  state.manualCoords  = state.recTrace.map(p => [p.lat, p.lng, p.ele ?? null]);
+  state.manualPts     = [];
+  state.importedTrace = true;   /* protège la trace enregistrée d'un clic carte accidentel */
   routeLayer.clearLayers();
   const lls = state.recTrace.map(p => [p.lat, p.lng]);
   L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
@@ -271,7 +268,8 @@ export async function afficherTraceSentiers() {
   const matched = await mapMatchTrace(state.recTrace);
 
   if (matched && matched.length >= 2) {
-    state.manualCoords = matched;
+    state.manualCoords  = matched;
+    state.importedTrace = true;   /* protège la trace recalée d'un clic carte accidentel */
     /* Waypoints d'édition (poignées) : version simplifiée de la trace */
     const pts = _simplifierTrace(state.recTrace, 40);
     state.manualPts = pts.map(p => [p.lng, p.lat]);

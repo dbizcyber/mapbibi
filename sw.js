@@ -4,7 +4,7 @@
    Niveau 2 : tuiles carte cachées à la demande (zone visible)
    ══════════════════════════════════════════════════════════════ */
 
-const CACHE_APP   = "mapybibi-app-v9-5";
+const CACHE_APP   = "mapybibi-app-v9-6";
 const CACHE_TILES = "mapybibi-tiles-v1";
 const MAX_TILES   = 2000;
 
@@ -32,6 +32,7 @@ const LIB_FILES = [
 const API_ORIGINS = [
   "nominatim.openstreetmap.org", "overpass-api.de",
   "valhalla1.openstreetmap.de", "api.open-elevation.com",
+  "api.open-meteo.com",
   "www.ibpindex.com",
 ];
 
@@ -103,7 +104,13 @@ self.addEventListener("fetch", event => {
         fetch(event.request).then(r => {
           if (r && r.status === 200) caches.open(CACHE_APP).then(c => c.put(event.request, r.clone()));
           return r;
-        }).catch(() => caches.match("./index.html"))
+        }).catch(() =>
+          /* Repli index.html UNIQUEMENT pour une navigation (SPA), pas pour un
+             asset échoué (.js/.png…) — sinon on renverrait du HTML à la place. */
+          event.request.mode === "navigate"
+            ? caches.match("./index.html")
+            : new Response("", { status: 504, statusText: "Hors-ligne" })
+        )
       )
     );
     return;
@@ -166,6 +173,14 @@ async function precacheTiles(bounds, maxZoom, client, template) {
     const r = lat * Math.PI / 180;
     return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z));
   }
+  /* Sous-domaine identique à celui que Leaflet choisira à l'affichage
+     (subdomains 'abc' par défaut → index = |x + y| % 3), pour que l'URL pré-cachée
+     corresponde EXACTEMENT à la requête runtime. Sans {s} dans le modèle : no-op. */
+  const SUBDOMAINS = "abc";
+  function tileUrl(z, x, y) {
+    const s = SUBDOMAINS[Math.abs(x + y) % SUBDOMAINS.length];
+    return template.replace("{s}", s).replace("{z}", z).replace("{x}", x).replace("{y}", y);
+  }
 
   const MIN_Z = 10;
   let total = 0;
@@ -193,7 +208,7 @@ async function precacheTiles(bounds, maxZoom, client, template) {
 
     for (let x = xMin; x <= xMax; x++) {
       for (let y = yMin; y <= yMax; y++) {
-        const url = template.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+        const url = tileUrl(z, x, y);
         try {
           if (!await cache.match(url)) {
             const r = await fetch(url);

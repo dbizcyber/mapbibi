@@ -6,7 +6,9 @@ let chart1 = null, chart2 = null;
 export function drawElevation(elevs, lls = []) {
   const raw = elevs && elevs.length ? elevs.map(e => e != null ? Math.round(e) : null) : [];
   const s   = raw.length ? smooth(raw) : [];
-  const g   = gainElev(raw);
+  /* D+/D− calculés sur la MÊME série lissée que la courbe affichée
+     (cohérence chiffre/graphe + moins de faux dénivelé dû au bruit GPS/SRTM). */
+  const g   = gainElev(s.length ? s : raw);
   const km  = lls.length ? (totalDist(lls) / 1000).toFixed(2) : '0.00';
   const cum = lls.length ? cumDist(lls) : s.map((_, i) => i);
 

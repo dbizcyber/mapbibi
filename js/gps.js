@@ -11,59 +11,85 @@ const MIN_DIST_M   = 5;
 const MAX_ACCURACY = 50;
 const MAX_SPEED    = 55;
 
-/* ── Élévation terrain ── */
-const ELE_CACHE_DIST = 30;
-const ELE_COOLDOWN   = 20000;
-let _lastElePos      = null;
-let _lastEleTime     = 0;
-let _eleQueue        = [];
-let _eleBusy         = false;
+/* ── Élévation terrain (enrichissement des points GPS enregistrés) ──
+   Stratégie « 100 % gratuit, sans clé » :
+   · Open-Meteo Elevation (Copernicus DEM) en primaire — lot jusqu'à 100 points,
+     fiable et rapide, une seule requête par lot.
+   · Open-Elevation (SRTM 30 m) en secours si Open-Meteo échoue.
+   Le traitement par lots supprime le goulot d'étranglement de l'ancienne version
+   (1 point / 20 s en série) : la file ne prend plus de retard sur une longue rando. */
+const ELE_BATCH_MAX      = 100;    /* points max par requête */
+const ELE_BATCH_INTERVAL = 12000;  /* ms min entre deux lots (politesse serveurs gratuits) */
+let _eleQueue     = [];            /* indices de state.recTrace en attente d'altitude terrain */
+let _eleBusy      = false;
+let _lastEleBatch = 0;
 
-async function _fetchTerrainEle(lat, lng) {
+/* Récupère les altitudes d'un lot de points. Retourne un tableau ele|null de même longueur. */
+async function _fetchTerrainBatch(points) {
+  /* 1) Open-Meteo — GET avec listes lat/lon (jusqu'à 100 points), sans clé */
+  try {
+    const lat = points.map(p => p.lat.toFixed(6)).join(',');
+    const lon = points.map(p => p.lng.toFixed(6)).join(',');
+    const r = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`,
+      { signal: AbortSignal.timeout(10000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d.elevation) && d.elevation.length === points.length) {
+        return d.elevation.map(e => typeof e === 'number' ? Math.round(e) : null);
+      }
+    }
+  } catch (e) { /* on tente le secours */ }
+
+  /* 2) Open-Elevation — POST batch, secours */
   try {
     const r = await fetch('https://api.open-elevation.com/api/v1/lookup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ locations: [{ latitude: lat, longitude: lng }] }),
-      signal: AbortSignal.timeout(8000)
+      body: JSON.stringify({ locations: points.map(p => ({ latitude: p.lat, longitude: p.lng })) }),
+      signal: AbortSignal.timeout(12000)
     });
-    if (!r.ok) return null;
-    const d = await r.json();
-    const el = d?.results?.[0]?.elevation;
-    return typeof el === 'number' ? Math.round(el) : null;
-  } catch (e) { return null; }
+    if (r.ok) {
+      const d = await r.json();
+      if (Array.isArray(d.results) && d.results.length === points.length) {
+        return d.results.map(x => typeof x.elevation === 'number' ? Math.round(x.elevation) : null);
+      }
+    }
+  } catch (e) { /* échec des deux → null */ }
+
+  return points.map(() => null);
 }
 
 async function _drainEleQueue() {
   if (_eleBusy) return;
   _eleBusy = true;
-  while (_eleQueue.length > 0) {
-    const idx = _eleQueue.shift();
-    const pt  = state.recTrace[idx];
-    if (!pt) continue;
-    const now = Date.now();
-    const pos = L.latLng(pt.lat, pt.lng);
-    const elapsed = now - _lastEleTime;
-    if (elapsed < ELE_COOLDOWN) await new Promise(r => setTimeout(r, ELE_COOLDOWN - elapsed));
-    if (_lastElePos && _lastElePos.distanceTo(pos) < ELE_CACHE_DIST) {
-      if (_lastElePos._terrainEle != null) {
-        state.recTrace[idx].ele       = _lastElePos._terrainEle;
-        state.recTrace[idx].eleSource = 'terrain-cache';
-      }
-      continue;
+  try {
+    while (_eleQueue.length > 0) {
+      /* Throttle entre deux lots */
+      const wait = ELE_BATCH_INTERVAL - (Date.now() - _lastEleBatch);
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+
+      /* Prendre un lot d'indices encore valides */
+      const batch  = _eleQueue.splice(0, ELE_BATCH_MAX);
+      const pts    = [];
+      const idxMap = [];
+      batch.forEach(idx => {
+        const pt = state.recTrace[idx];
+        if (pt) { pts.push({ lat: pt.lat, lng: pt.lng }); idxMap.push(idx); }
+      });
+      if (!pts.length) continue;
+
+      const eles = await _fetchTerrainBatch(pts);
+      _lastEleBatch = Date.now();
+      eles.forEach((ele, k) => {
+        const p = state.recTrace[idxMap[k]];
+        if (!p) return;
+        if (ele != null) { p.ele = ele; p.eleSource = 'terrain'; }
+        else if (!p.eleSource || p.eleSource === 'gps') { p.eleSource = 'gps-fallback'; }
+      });
     }
-    const terrainEle = await _fetchTerrainEle(pt.lat, pt.lng);
-    _lastEleTime = Date.now();
-    if (terrainEle !== null) {
-      state.recTrace[idx].ele       = terrainEle;
-      state.recTrace[idx].eleSource = 'terrain';
-      _lastElePos = pos;
-      _lastElePos._terrainEle = terrainEle;
-    } else {
-      state.recTrace[idx].eleSource = 'gps-fallback';
-    }
+  } finally {
+    _eleBusy = false;
   }
-  _eleBusy = false;
 }
 
 let livePolyline  = null;
@@ -158,12 +184,20 @@ function _startWatch() {
   if (_watchId != null) {
     try { navigator.geolocation.clearWatch(_watchId); } catch (e) {}
   }
+  /* Haute précision uniquement pendant l'enregistrement (sobriété batterie).
+     En planification/navigation, une précision standard suffit pour le marqueur
+     de position et l'alerte d'écart de trace. */
+  const hi = state.gpsTracking;
   _watchId = navigator.geolocation.watchPosition(
     _handlePosition,
     err => console.warn('GPS:', err.message),
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 }
+    { enableHighAccuracy: hi, maximumAge: hi ? 5000 : 15000, timeout: 30000 }
   );
 }
+
+/* Relance le watch avec la précision adaptée à l'état courant
+   (appelé au démarrage et à l'arrêt d'un enregistrement). */
+export function restartWatch() { _startWatch(); }
 
 /* ── Force une position immédiate (réveil GPS après background) ── */
 function _forceGetPosition() {
@@ -186,12 +220,14 @@ function _updateLiveTrace() {
 }
 
 export function resetLivePolyline() { livePolyline = null; }
+/* Réassigne la polyline live (utilisé par recording.js après restauration d'une trace,
+   pour que _updateLiveTrace continue à faire grandir CETTE polyline au lieu d'en créer une 2ᵉ). */
+export function setLivePolyline(poly) { livePolyline = poly; }
 export function clearGpsRecState() {
-  _lastRecPos  = null;
-  _lastRecTime = 0;
-  _eleQueue    = [];
-  _lastElePos  = null;
-  _lastEleTime = 0;
+  _lastRecPos   = null;
+  _lastRecTime  = 0;
+  _eleQueue     = [];
+  _lastEleBatch = 0;
 }
 
 /* ── WAKE LOCK ── */

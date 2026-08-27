@@ -428,8 +428,8 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
 <div id="startupPopup">
   <div class="popup-box">
     <h3>🥾 MapiBiBi — Bienvenue</h3>
-    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.4 — Juillet 2026 · 100 % outils gratuits</p>
-    <p>Correctif : <b>enregistrement terrain indestructible</b> — reprise automatique après kill/reload, mise à jour SW bloquée pendant l'enregistrement, sauvegarde forcée à chaque passage en arrière-plan. Et : DIN 33466 à 3,5 km/h · import GPX mobile.</p>
+    <p style="font-size:12px;margin-bottom:6px;opacity:.6">v9.6 — Août 2026 · 100 % outils gratuits</p>
+    <p>Audit &amp; correctifs : fin de la double trace à la reprise d'enregistrement, hors-ligne fiable (bon sous-domaine de tuiles), altitudes récupérées par lots (Open-Meteo + Open-Elevation), GPS haute précision réservé à l'enregistrement, et nettoyages divers.</p>
     <p style="font-size:11px;margin-top:8px;opacity:.55">Tapez la carte pour tracer · ⏺️ Enreg. pour capturer votre parcours terrain · ⚙️ Options pour les couches</p>
     <button onclick="closeStartupPopup()">C'est parti 🥾</button>
   </div>
@@ -450,25 +450,33 @@ html, body { height: 100%; font-family: -apple-system, 'Segoe UI', Arial, sans-s
   </div>
 </div>
 
-<div id="recRestorePopup" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); align-items:center; justify-content:center; z-index:5000;">
-  <div class="popup-box">
-    <h3>📍 Enregistrement interrompu</h3>
-    <p id="rec-restore-info" style="font-size:13px; color:rgba(255,255,255,.65); margin-bottom:16px;"></p>
-    <button onclick="restaurerTraceLive(true)" style="width:100%; padding:12px; background:rgba(57,255,20,.15); border:none; border-radius:10px; color:#9aff72; font-size:14px; font-weight:600; cursor:pointer; margin-bottom:10px;">
-      ✅ Restaurer la trace
-    </button>
-    <button onclick="restaurerTraceLive(false)" style="width:100%; padding:12px; background:rgba(255,255,255,.08); border:none; border-radius:10px; color:rgba(255,255,255,.6); font-size:14px; font-weight:600; cursor:pointer;">
-      🗑️ Ignorer
-    </button>
-  </div>
-</div>
-
 <input type="file" id="importFile" accept=".gpx,.xml,.json,.geojson,application/gpx+xml,application/xml,text/xml,application/json,application/geo+json,*/*">
 <div id="toast"></div>
 <div id="update-toast">
   🔄 Nouvelle version disponible
   <button onclick="applyUpdate()">Mettre à jour</button>
 </div>
+
+<!-- Garde de chargement : si un composant CDN essentiel manque (réseau coupé au tout
+     premier lancement, avant mise en cache SW), on prévient clairement au lieu d'un
+     écran noir cassé. Les libs optionnelles (togeojson/togpx/nosleep) sont déjà gérées
+     défensivement dans le code, on ne vérifie donc que Leaflet + Chart.js. -->
+<script>
+(function () {
+  var manquants = [];
+  if (typeof window.L === 'undefined')     manquants.push('Leaflet (carte)');
+  if (typeof window.Chart === 'undefined') manquants.push('Chart.js (profil altimétrique)');
+  if (!manquants.length) return;
+  var o = document.createElement('div');
+  o.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0d1117;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;font-family:-apple-system,Segoe UI,Arial,sans-serif';
+  o.innerHTML = '<div style="max-width:340px"><div style="font-size:40px">🗺️</div>'
+    + '<h2 style="font-size:18px;margin:12px 0 8px">Composants non chargés</h2>'
+    + '<p style="font-size:13px;color:rgba(255,255,255,.6);line-height:1.5">MapiBiBi n\'a pas pu charger&nbsp;: '
+    + manquants.join(', ') + '.<br>Vérifiez votre connexion puis relancez — une fois chargés la première fois, ils fonctionnent ensuite hors-ligne.</p>'
+    + '<button onclick="location.reload()" style="margin-top:16px;padding:11px 20px;background:#2d6a4f;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:600;cursor:pointer">Réessayer</button></div>';
+  document.body.appendChild(o);
+})();
+</script>
 
 <!-- Point d'entrée ES Module — doit être APRÈS le chargement des libs CDN (Leaflet, Chart.js…) -->
 <script type="module" src="js/app.js"></script>

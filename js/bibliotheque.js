@@ -4,9 +4,10 @@
 import { state }                          from './state.js';
 import { showToast, totalDist, gainElev, estimerTemps } from './utils.js';
 import { saveLocal }                      from './storage.js';
-import { map, routeLayer, editMarkersGrp, mkEditable, updateStartEndMarkers } from './map.js';
+import { map, routeLayer, editMarkersGrp, mkEditable, updateStartEndMarkers, refreshPts } from './map.js';
 import { drawElevation }                  from './elevation.js';
 import { showChartArea }                  from './ui.js';
+import { rebuildRoute }                   from './routing.js';
 
 const DB_NAME  = 'mapibibi-db';
 const DB_VER   = 1;
@@ -101,6 +102,7 @@ export async function chargerTrace(id) {
     const lls = state.manualCoords.map(c => [c[0], c[1]]);
     L.polyline(lls, { color: '#e53e3e', weight: 3, smoothFactor: 1.5 }).addTo(routeLayer);
     mkEditable(lls);
+    refreshPts(() => rebuildRoute());
     updateStartEndMarkers(lls);
     drawElevation(state.manualCoords.map(c => c[2] ?? null), lls);
     map.fitBounds(lls, { padding: [20, 20] });

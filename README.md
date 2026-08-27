@@ -80,3 +80,32 @@ Un import() dynamique utilisé sans await — renvoyait une Promise, pas le modu
 
 Leaflet peut avoir un rendu corrompu après un passage en arrière-plan sur mobile. L'appel à invalidateSize() dans le callback de reprise force le rafraîchissement du canvas.
 Vérification d'interop automatisée — script Python qui croise les 100 exports des 19 modules contre tous les imports : aucune incohérence. Les 30 fonctions onclick du HTML sont toutes présentes dans Object.assign(window, {...}).
+
+*********************
+## v9.6 — Août 2026 · Audit complet & correctifs (cache SW → v9-6)
+
+Correctifs vérifiés (syntaxe + cohérence imports/exports des 19 modules + évaluation du graphe de modules + tous les onclick HTML exposés) :
+
+**🔴 Critiques**
+- **Double trace à la reprise d'enregistrement** — `gps.js` expose désormais `setLivePolyline()` ; `recording.js:_restaurerPolyline()` réassigne la polyline restaurée pour que `_updateLiveTrace` la fasse grandir au lieu d'en créer une seconde.
+- **« Effacer tout » et la ligne droite** — `app.js` testait `window._slA/_slB` (inexistants) ; corrigé en `markers.slA/slB`.
+- **Pré-cache hors-ligne incomplet** — le SW choisit maintenant le sous-domaine de tuile avec la même formule que Leaflet (`|x+y| % 3` sur `abc`), donc les URLs pré-cachées correspondent exactement à celles demandées à l'affichage. `currentTileTemplate()` renvoie le modèle brut (avec `{s}`).
+
+**🟠 Importants**
+- **Altitudes en lot** — remplacement de l'enrichissement 1 point / 20 s par des requêtes par lots (jusqu'à 100 points) : **Open-Meteo** en primaire, **Open-Elevation** en secours. 100 % gratuit, sans clé.
+- **Superposition trace manuelle + reprise** — `_lancerEnregistrement` repart d'une carte propre (routeLayer + calques d'édition vidés) pour les deux branches.
+- **Perte de trace par clic** — `importedTrace = true` après affichage d'une trace enregistrée (brut/sentiers) : un clic carte demande confirmation avant d'écraser.
+- **D+/D− cohérents** — calculés sur la même série lissée que la courbe.
+
+**🟡 Mineurs**
+- Code mort supprimé : `restaurerTraceLive` + popup `#recRestorePopup` + `window._ptsInterrompus`, `_mergeElevations`, imports inutilisés.
+- Message de démarrage aligné (4 km/h au lieu de « DIN 33466 à 3,5 km/h »).
+- `.nojekyll` ajouté.
+- Fallback SW limité aux navigations (plus de `index.html` renvoyé pour un `.js`/`.png` échoué).
+- GPS haute précision réservé à l'enregistrement (sobriété batterie), précision standard en planification/navigation.
+- `chargerTrace()` appelle `refreshPts()`.
+- Garde de démarrage : si Leaflet/Chart.js ne se chargent pas (CDN injoignable au 1er lancement), message clair au lieu d'un écran cassé.
+
+**Connu / hors périmètre**
+- Clé API IBP en clair dans `ibp.js` : la masquer imposerait un proxy backend, contraire au principe « 100 % gratuit sans serveur ». Laissée telle quelle.
+- Libs toujours servies via CDN (téléchargement local impossible depuis l'environnement de correction) ; elles restent mises en cache par le SW dès le 1er chargement réussi.

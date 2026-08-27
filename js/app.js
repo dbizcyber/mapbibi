@@ -3,12 +3,12 @@
    Importe tous les modules et câble les événements globaux
    ══════════════════════════════════════════════════════════ */
 
-import { state }                               from './state.js';
+import { state, markers }                      from './state.js';
 import { showToast }                           from './utils.js';
 import { saveLocal, loadLocal, loadCounters, resetCounters } from './storage.js';
 import { switchTab, initBottomSheet, showChartArea, toggleChartArea,
          updateCounterUI, closeStartupPopup, applyUpdate,
-         showUpdateToast, updateOnlineStatus, setLoading, setBtnLigne } from './ui.js';
+         showUpdateToast } from './ui.js';
 import { map, switchLayer, toggleOverlay,
          updateStartEndMarkers, mkEditable, refreshPts,
          routeLayer, editMarkersGrp, editPts, markersGrp,
@@ -17,9 +17,9 @@ import { rebuildRoute }                        from './routing.js';
 import { drawElevation, destroyCharts }        from './elevation.js';
 import { initGPS }                             from './gps.js';
 import { onclickRec, stopRecording, verifierTraceInterrompue,
-         restaurerTraceLive, afficherTraceBrut, afficherTraceSentiers,
+         afficherTraceBrut, afficherTraceSentiers,
          isRecording }                         from './recording.js';
-import { handleImport, triggerImport, exportGPX, initGpxListeners } from './gpx.js';
+import { triggerImport, exportGPX, initGpxListeners } from './gpx.js';
 import { openSearch, closeSearch, initSearchListeners } from './search.js';
 import { openBouclePanel, annulerBoucle, boucleHandleTap } from './boucle.js';
 import { startLigneDroite, clearLigneDroite }  from './ligne-droite.js';
@@ -56,7 +56,6 @@ Object.assign(window, {
   /* enregistrement */
   onclickRec,
   stopRecording,
-  restaurerTraceLive,
   afficherTraceBrut,
   afficherTraceSentiers,
   /* recherche */
@@ -117,7 +116,7 @@ function removeLastPoint() {
 
 function confirmClearAll() {
   const hasRoute = state.manualCoords.length || state.manualPts.length;
-  const hasSL    = window._slA || window._slB;
+  const hasSL    = markers.slA || markers.slB;
   if (!hasRoute && !hasSL) { showToast('Rien à effacer'); return; }
   if (!confirm('Effacer la trace, les points A/B et la ligne droite ?')) return;
   clearAll();

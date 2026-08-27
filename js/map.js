@@ -43,10 +43,13 @@ export function switchLayer(n) {
   });
 }
 
-/* URL de tuiles du fond actif — pour le pré-cache hors-ligne */
+/* URL-modèle de tuiles du fond actif — pour le pré-cache hors-ligne.
+   On renvoie le modèle BRUT (avec {s} éventuel) : le Service Worker choisit le
+   sous-domaine tuile par tuile avec la même formule que Leaflet, pour que les URLs
+   pré-cachées correspondent exactement à celles demandées à l'affichage. */
 export function currentTileTemplate() {
   const layer = BASE_LAYERS[state.curBase] || osmLayer;
-  return layer._url.replace('{s}', 'a');
+  return layer._url;
 }
 
 /* ── OVERLAYS ── */
